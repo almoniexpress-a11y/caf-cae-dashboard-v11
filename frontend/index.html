@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CAF CAE Secure Operations Dashboard v12</title>
+  <title>CAF CAE Admin Portal v14</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -17,27 +17,41 @@
 <body>
   <div id="toast" class="toast hidden"></div>
 
-  <div id="loginOverlay" class="login-screen">
-    <div class="login-panel">
-      <div class="login-logo-row">
-        <div class="login-logo"><img src="assets/caf-cae-logo.png" alt="CAF CAE" /></div>
-        <div>
-          <h1>CAF CAE</h1>
-          <p>CAF CAE professional operations portal · Agent · Team · Commercialista · Admin</p>
+  <div id="loginOverlay" class="login-screen login-screen-pro">
+    <div class="login-panel login-panel-pro">
+      <aside class="login-brand-pane">
+        <div class="login-brand-card">
+          <img src="assets/caf-cae-logo.png" alt="CAF CAE logo" />
         </div>
-      </div>
-      <div id="loginError" class="alert error hidden"></div>
-      <form id="loginForm" class="login-form">
-        <label>Username / Email</label>
-        <input id="loginUser" type="text" placeholder="agent" autocomplete="username" required />
-        <label>Password</label>
-        <input id="loginPass" type="password" placeholder="Inserisci password" autocomplete="current-password" required />
-        <button class="btn orange full" type="submit">Entra nel portale <i class="fa-solid fa-right-to-bracket"></i></button>
-      </form>
-      <div class="login-help-row">
-        <button id="forgotPasswordBtn" class="link-btn" type="button">Password dimenticata?</button>
-        <small>Accesso sicuro tramite backend CAF CAE</small>
-      </div>
+        <span class="login-secure-pill"><i class="fa-solid fa-shield-halved"></i> Portale sicuro CAF CAE</span>
+        <h2>CAF CAE Admin & Team</h2>
+        <p>Gestione operativa professionale per Admin, Agent, Team Bangla, Team Italy e Studio Commercialista.</p>
+        <div class="login-feature-list">
+          <div><i class="fa-solid fa-user-lock"></i><span>Password protette dal backend</span></div>
+          <div><i class="fa-solid fa-users-gear"></i><span>Admin crea nuovi dipendenti e agenti</span></div>
+          <div><i class="fa-solid fa-cloud-arrow-up"></i><span>Sincronizzazione live con Railway + Supabase</span></div>
+        </div>
+      </aside>
+      <main class="login-form-pane">
+        <div class="login-mobile-logo"><img src="assets/caf-cae-logo.png" alt="CAF CAE" /></div>
+        <div class="login-title-block">
+          <span class="login-chip">Area riservata</span>
+          <h1>Accedi al portale</h1>
+          <p>Usa username/email e password creata dall’amministratore.</p>
+        </div>
+        <div id="loginError" class="alert error hidden"></div>
+        <form id="loginForm" class="login-form">
+          <label>Username / Email</label>
+          <input id="loginUser" type="text" placeholder="es. nomeutente o email" autocomplete="username" required />
+          <label>Password</label>
+          <input id="loginPass" type="password" placeholder="Inserisci password" autocomplete="current-password" required />
+          <button class="btn orange full" type="submit">Entra nel portale <i class="fa-solid fa-right-to-bracket"></i></button>
+        </form>
+        <div class="login-help-row">
+          <button id="forgotPasswordBtn" class="link-btn" type="button">Password dimenticata?</button>
+          <small>Nessun accesso demo pubblico</small>
+        </div>
+      </main>
     </div>
   </div>
 
@@ -50,7 +64,8 @@
       <div id="topBreadcrumb" class="breadcrumb">Home</div>
       <div class="top-right">
         <div class="office-pill"><span id="sessionName">--</span><small id="sessionRole">--</small></div>
-        <button id="btnLogout" class="icon-btn"><i class="fa-solid fa-power-off"></i></button>
+        <button id="btnChangePassword" class="icon-btn" title="Cambia password"><i class="fa-solid fa-key"></i></button>
+        <button id="btnLogout" class="icon-btn" title="Logout"><i class="fa-solid fa-power-off"></i></button>
       </div>
     </header>
 
@@ -412,15 +427,39 @@
     </section>
 
     <!-- ADMIN DASHBOARD -->
-    <section id="dashboard-admin" class="role-dashboard hidden simple-dashboard">
-      <aside class="cgn-sidebar"><button data-admin-tab="admin-home" class="active">Admin home</button><button data-admin-tab="admin-users">Users</button><button data-admin-tab="admin-credit">Agent credit</button><button data-admin-tab="admin-pratiche">All pratiche</button><button data-admin-tab="admin-salary">Team salary</button><button data-admin-tab="admin-commission">Commissioni</button><button data-admin-tab="admin-tickets">Tickets</button><button data-admin-tab="admin-docs">Documenti</button><button data-admin-tab="admin-sources">Fonti</button></aside>
-      <main class="cgn-main"><div class="cgn-actionbar"><b>Admin Control</b><span>All transactions, users, credit, salaries and commissions</span></div>
-        <div id="admin-home" class="admin-tab active"><div class="kpi-row"><div class="kpi white"><span>Tutte pratiche</span><strong id="adminAllCount">0</strong></div><div class="kpi white"><span>Credito agents</span><strong id="adminCreditTotal">€0,00</strong></div><div class="kpi white"><span>Commissioni pending</span><strong id="adminCommissionPending">€0,00</strong></div><div class="kpi white"><span>Team salary mese</span><strong id="adminSalaryMonth">€0,00</strong></div></div><div class="white-card"><h3>All transaction timeline</h3><div id="adminTimeline" class="timeline-list"></div></div></div>
-        <div id="admin-users" class="admin-tab"><div class="grid-2"><div class="white-card"><h3>Crea user</h3><form id="adminUserForm" class="form-grid cols-2"><label>Nome <input id="adName" required /></label><label>Email <input id="adEmail" type="email" required /></label><label>Username <input id="adUsername" required /></label><label>Password iniziale <input id="adPassword" type="password" placeholder="Imposta password" autocomplete="new-password" required /></label><label>Ruolo <select id="adRole"><option value="agent">Agent</option><option value="commercialista">Commercialista</option><option value="bangla">Team Bangla</option><option value="italy">Team Italy</option><option value="admin">Admin</option></select></label><label>Credito iniziale <input id="adCredit" type="number" value="0" /></label><button class="btn orange form-span">Crea user</button></form></div><div class="white-card"><h3>Users</h3><div id="adminUsersList" class="flat-list"></div></div></div></div>
+    <section id="dashboard-admin" class="role-dashboard hidden admin-dashboard-v14">
+      <aside class="cgn-sidebar admin-sidebar">
+        <div class="side-role-card"><i class="fa-solid fa-shield-halved"></i><div><b>Admin Portal</b><small>controllo generale</small></div></div>
+        <button data-admin-tab="admin-home" class="active"><i class="fa-solid fa-chart-line"></i> Dashboard</button>
+        <button data-admin-tab="admin-users"><i class="fa-solid fa-users-gear"></i> Team & utenti</button>
+        <button data-admin-tab="admin-create"><i class="fa-solid fa-plus"></i> Crea pratica</button>
+        <button data-admin-tab="admin-pratiche"><i class="fa-solid fa-folder-open"></i> Tutte pratiche</button>
+        <button data-admin-tab="admin-daily"><i class="fa-solid fa-calendar-check"></i> Daily work report</button>
+        <button data-admin-tab="admin-credit"><i class="fa-solid fa-wallet"></i> Agent credit</button>
+        <button data-admin-tab="admin-salary"><i class="fa-solid fa-money-check-dollar"></i> Team salary</button>
+        <button data-admin-tab="admin-commission"><i class="fa-solid fa-percent"></i> Commissioni</button>
+        <button data-admin-tab="admin-tickets"><i class="fa-solid fa-ticket"></i> Tickets</button>
+        <button data-admin-tab="admin-docs"><i class="fa-solid fa-file-arrow-down"></i> Documenti</button>
+        <button data-admin-tab="admin-sources"><i class="fa-solid fa-book"></i> Fonti</button>
+      </aside>
+      <main class="cgn-main admin-main">
+        <div class="cgn-actionbar admin-actionbar"><div><b>Admin CAF CAE</b><span>Utenti, pratiche, team daily work, credito, commissioni e controllo completo</span></div><div class="actionbar-actions"><button class="btn light" data-admin-tab="admin-users">+ Nuovo utente</button><button class="btn orange" data-admin-tab="admin-create">+ Crea pratica</button></div></div>
+        <div id="admin-home" class="admin-tab active">
+          <div class="admin-hero-panel"><div><span>CAF CAE ADMIN CONTROL</span><h2>Centro operativo generale</h2><p>Da qui puoi creare utenti, creare pratiche, controllare lavoro giornaliero di Team Bangla/Italy, gestire agenti, commercialista e tutti i flussi.</p></div><div class="admin-hero-actions"><button class="btn blue" data-admin-tab="admin-users">Crea team / agente</button><button class="btn orange" data-admin-tab="admin-create">Nuova pratica</button></div></div>
+          <div class="kpi-row admin-kpis"><div class="kpi white"><span>Tutte pratiche</span><strong id="adminAllCount">0</strong><small>database operativo</small></div><div class="kpi white"><span>Credito agents</span><strong id="adminCreditTotal">€0,00</strong><small>saldo totale</small></div><div class="kpi white"><span>Commissioni pending</span><strong id="adminCommissionPending">€0,00</strong><small>da pagare</small></div><div class="kpi white"><span>Team salary mese</span><strong id="adminSalaryMonth">€0,00</strong><small>Bangla + Italy</small></div><div class="kpi white"><span>Dipendenti attivi</span><strong id="adminActiveUsersCount">0</strong><small>tutti i ruoli</small></div></div>
+          <div class="grid-2"><div class="white-card"><div class="card-head"><h3>Ruoli registrati</h3><button class="link-btn" data-admin-tab="admin-users">gestisci</button></div><div id="adminRoleSummary" class="role-summary-grid"></div></div><div class="white-card"><div class="card-head"><h3>Daily work oggi</h3><button class="link-btn" data-admin-tab="admin-daily">apri report</button></div><div id="adminTodayWork" class="flat-list"></div></div></div>
+          <div class="white-card"><h3>Ultime attività / wallet</h3><div id="adminTimeline" class="timeline-list"></div></div>
+        </div>
+        <div id="admin-users" class="admin-tab"><div class="grid-2"><div class="white-card admin-create-user-card"><h3>Crea nuovo utente / dipendente</h3><form id="adminUserForm" class="form-grid cols-2"><label>Nome completo <input id="adName" required placeholder="Nome e cognome" /></label><label>Email <input id="adEmail" type="email" required placeholder="email@cafcae.it" /></label><label>Username <input id="adUsername" required placeholder="username login" /></label><label>Password iniziale <input id="adPassword" type="password" placeholder="Minimo 8 caratteri" autocomplete="new-password" required /></label><label>Ruolo <select id="adRole"><option value="agent">Agent</option><option value="commercialista">Commercialista</option><option value="bangla">Team Bangla</option><option value="italy">Team Italy</option><option value="admin">Admin</option></select></label><label>Telefono <input id="adPhone" placeholder="+39 ..." /></label><label>Ufficio / sede <input id="adOffice" placeholder="es. Firenze, Prato, Team Italy" /></label><label>Credito iniziale agent <input id="adCredit" type="number" value="0" /></label><label>Stipendio mensile team <input id="adSalary" type="number" value="0" /></label><label>Stato <select id="adActive"><option value="true">Attivo</option><option value="false">Disattivato</option></select></label><button class="btn orange form-span">Crea user sicuro</button></form></div><div class="white-card"><div class="card-head"><h3>Utenti registrati</h3><span id="adminUsersMiniCount" class="chip green">0 utenti</span></div><div id="adminUsersList" class="flat-list"></div></div></div></div>
+        <div id="admin-create" class="admin-tab"><div class="grid-2"><div class="white-card"><h3>Crea pratica da Admin</h3><form id="adminPraticaForm" class="form-grid cols-2"><label>Servizio <select id="adminOrderService"><option value="730">Modello 730</option><option value="isee">ISEE / DSU</option><option value="naspi">NASpI</option><option value="f24-compilazione">F24 Compilazione</option><option value="permesso-rinnovo">Rinnovo Permesso</option><option value="commercialista-annuale">Commercialista annuale</option></select></label><label>Team assegnato <select id="adminOrderTeam"><option value="bangla">Team Bangla</option><option value="italy">Team Italy</option><option value="commercialista">Commercialista</option></select></label><label>Agente / source <select id="adminOrderAgent"><option value="">Creato da Admin</option></select></label><label>Priorità <select id="adminOrderPriority"><option>Normale</option><option>Urgente</option><option>Scadenza vicina</option></select></label><label>Cognome cliente <input id="adminOrderLast" required /></label><label>Nome cliente <input id="adminOrderFirst" required /></label><label>Codice fiscale <input id="adminOrderCf" /></label><label>Telefono <input id="adminOrderPhone" /></label><label>Email <input id="adminOrderEmail" type="email" /></label><label>Costo <input id="adminOrderCost" type="number" step="0.01" value="0" /></label><label>Pagamento <select id="adminOrderPayment"><option>Pagato</option><option>In attesa pagamento</option><option>Agent credit</option><option>Bonifico</option><option>Contanti</option></select></label><label>Scadenza <input id="adminOrderDeadline" type="date" /></label><label class="form-span">Note interne <textarea id="adminOrderNote" placeholder="Messaggio per team / operatore"></textarea></label><button class="btn orange form-span">Crea pratica e assegna</button></form></div><div class="white-card"><h3>Come funziona</h3><div class="document-preview"><div class="preview-line"><span>Admin</span><b>vede tutto</b></div><div class="preview-line"><span>Team Bangla</span><b>riceve pratiche assegnate</b></div><div class="preview-line"><span>Team Italy</span><b>riceve pratiche finali</b></div><div class="preview-line"><span>Agent</span><b>vede solo le sue pratiche</b></div><div class="preview-line"><span>Commercialista</span><b>vede area aziende/contabilità</b></div></div></div></div></div>
+        <div id="admin-pratiche" class="admin-tab"><div class="white-card"><div class="card-head"><h3>Tutte le pratiche</h3><button class="btn orange" data-admin-tab="admin-create">+ Crea pratica</button></div><div id="adminPraticheTable" class="table-wrap"></div></div></div>
+        <div id="admin-daily" class="admin-tab"><div class="grid-2"><div class="white-card"><h3>Report giornalieri Team Bangla / Italy</h3><div id="adminDailyReports" class="flat-list"></div></div><div class="white-card"><h3>Azioni team su pratiche</h3><div id="adminTeamActions" class="timeline-list"></div></div></div></div>
         <div id="admin-credit" class="admin-tab"><div class="white-card"><h3>Richieste credito agenti</h3><div id="adminCreditRequests" class="flat-list"></div></div></div>
-        <div id="admin-pratiche" class="admin-tab"><div class="white-card"><h3>Tutte le pratiche</h3><div id="adminPraticheTable" class="table-wrap"></div></div></div>
         <div id="admin-salary" class="admin-tab"><div class="white-card"><h3>Team salary</h3><div id="adminSalaryList" class="flat-list"></div></div></div>
-        <div id="admin-commission" class="admin-tab"><div class="white-card"><h3>Commissioni agenti</h3><div id="adminCommissionList" class="flat-list"></div></div></div><div id="admin-tickets" class="admin-tab"><div class="white-card"><h3>Tutti i ticket</h3><div id="adminTicketList" class="flat-list"></div></div></div><div id="admin-docs" class="admin-tab"><div class="white-card"><h3>Download documenti pratiche</h3><div id="adminDocsList" class="flat-list"></div></div></div><div id="admin-sources" class="admin-tab"><div class="white-card"><h3>Fonti ufficiali condivise</h3><div id="adminSourcesList" class="flat-list"></div></div></div>
+        <div id="admin-commission" class="admin-tab"><div class="white-card"><h3>Commissioni agenti</h3><div id="adminCommissionList" class="flat-list"></div></div></div>
+        <div id="admin-tickets" class="admin-tab"><div class="white-card"><h3>Tutti i ticket</h3><div id="adminTicketList" class="flat-list"></div></div></div>
+        <div id="admin-docs" class="admin-tab"><div class="white-card"><h3>Download documenti pratiche</h3><div id="adminDocsList" class="flat-list"></div></div></div>
+        <div id="admin-sources" class="admin-tab"><div class="white-card"><h3>Fonti ufficiali condivise</h3><div id="adminSourcesList" class="flat-list"></div></div></div>
       </main>
     </section>
   </div>

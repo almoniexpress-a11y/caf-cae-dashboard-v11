@@ -33,4 +33,4 @@ docs/V12-SECURE-AUTH-STEPS.md
 5. Clear browser storage and test.
 
 ## Test
-Old demo login such as `agent / 123` must fail.
+Old demo credentials must fail.

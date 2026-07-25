@@ -194,20 +194,20 @@ const praticaSchema = z.object({ serviceTitle: z.string().optional(), service_ti
 const companySchema = z.object({ name: z.string().min(1), vat: z.string().optional(), email: z.string().email().optional().or(z.literal('')), phone: z.string().optional() }).passthrough();
 
 // Health and live state snapshot for all dashboards.
-app.get('/api/health', asyncHandler(async (_req, res) => ok(res, { service: 'CAF CAE full dashboard backend v11', database: hasSupabase ? 'supabase' : 'memory-fallback', time: now() })));
+app.get('/api/health', asyncHandler(async (_req, res) => ok(res, { service: 'CAF CAE full dashboard backend v13 clean base', database: hasSupabase ? 'supabase' : 'memory-fallback', time: now() })));
 
-app.get('/api/live/version', asyncHandler(async (req, res) => {
+app.get('/api/live/version', requireAuth, asyncHandler(async (req, res) => {
   const key = `${req.query.role || 'all'}:${req.query.email || 'all'}`;
   const v = await dbOne('system_versions', { version_key: key });
   ok(res, { version: v?.version || 0, updated_at: v?.updated_at || null });
 }));
-app.get('/api/live/state', asyncHandler(async (req, res) => {
+app.get('/api/live/state', requireAuth, asyncHandler(async (req, res) => {
   const role = req.query.role || 'all'; const email = req.query.email || 'all';
   const exact = await dbOne('dashboard_snapshots', { role, email });
   const global = await dbOne('dashboard_snapshots', { role: 'all', email: 'all' });
   ok(res, { state: exact?.state_data || global?.state_data || null, version: (await dbOne('system_versions', { version_key: `${role}:${email}` }))?.version || 0 });
 }));
-app.post('/api/live/state', asyncHandler(async (req, res) => {
+app.post('/api/live/state', requireAuth, asyncHandler(async (req, res) => {
   const role = req.body.role || 'all'; const email = req.body.email || 'all';
   const saved = await dbUpsert('dashboard_snapshots', { role, email }, { state_data: req.body.state || {}, saved_by: req.body.user || email, updated_at: now() });
   const v = await bumpSystem(role, email, 'dashboard snapshot saved');
@@ -549,7 +549,7 @@ app.patch('/api/admin/users/:id', requireAuth, requireRole('admin'), asyncHandle
   const updated = await dbUpdate('dashboard_users', req.params.id, patch);
   ok(res, { user: publicUser(updated) });
 }));
-app.get('/api/admin/dashboard', asyncHandler(async (_req, res) => {
+app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), asyncHandler(async (_req, res) => {
   const [pratiche, companies, tickets, credit, sales] = await Promise.all([dbSelect('pratiche'), dbSelect('companies'), dbSelect('tickets'), dbSelect('agent_credit_transactions'), dbSelect('comm_sales')]);
   ok(res, { stats: { pratiche: pratiche.length, companies: companies.length, tickets: tickets.length, credit: credit.reduce((s, t) => s + (t.type === 'plus' ? safeNumber(t.amount) : -safeNumber(t.amount)), 0), sales: sales.reduce((s, x) => s + safeNumber(x.card || x.cash || x.total || x.payload?.total), 0) } });
 }));
@@ -630,4 +630,4 @@ app.use((err, req, res, _next) => {
   bad(res, 500, err.message || 'Errore server.');
 });
 
-app.listen(PORT, () => console.log(`CAF CAE full dashboard backend v11 running on port ${PORT} (${hasSupabase ? 'Supabase' : 'memory fallback'})`));
+app.listen(PORT, () => console.log(`CAF CAE full dashboard backend v13 clean base running on port ${PORT} (${hasSupabase ? 'Supabase' : 'memory fallback'})`));

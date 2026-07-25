@@ -63,50 +63,37 @@
   }
 
   function seed() {
-    const saved = localStorage.getItem('caf_cae_v12_state') || localStorage.getItem('caf_cae_v11_state');
+    // v13 clean base: no demo pratiche, no demo companies, no demo tickets.
+    // The dashboard starts empty and only shows real work created after login.
+    const saved = localStorage.getItem('caf_cae_v13_state') || localStorage.getItem('caf_cae_v12_state') || localStorage.getItem('caf_cae_v11_state');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         Object.assign(STATE, parsed);
         STATE.signatureDataUrl = '';
+        STATE.signature730DataUrl = '';
+        STATE.banglaSignatureDataUrl = '';
         sanitizeUsers();
         return;
       } catch (_) {}
     }
-    STATE.pratiche = [
-      {
-        id: 'p-730-demo', code: 'CAF-730-2026-0001', source: 'agent', group: 'CAF', serviceKey: '730', serviceTitle: 'Modello 730',
-        client: { firstName: 'ANU', lastName: 'SHRESTHA', cf: 'SHRNAU00D69Z234I', phone: '3512761276', email: 'student@example.com', city: 'Firenze' },
-        agentEmail: 'agent@cafcae.it', routeTeam: 'italy', assignedTeam: 'italy', status: 'In verifica', paymentStatus: 'Pagato', documentStatus: 'Documenti ricevuti', cost: 20, commission: 8,
-        missingDocs: [], uploads: ['CU 1.pdf', 'CU 2.pdf', 'Documento.pdf'], teamMessage: '730 in verifica da Team Italy.', internal730: { type: 'Debito', total: 2423, june: 2423, november: 170, income: 16142 }, createdAt: '2026-06-23', updatedAt: today(), delega: true, signature: true
-      },
-      {
-        id: 'p-isee-demo', code: 'CAF-ISEE-2026-0002', source: 'agent', group: 'CAF', serviceKey: 'isee', serviceTitle: 'ISEE / DSU',
-        client: { firstName: 'Mario', lastName: 'Rossi', cf: 'RSSMRA92E15F205K', phone: '+39 3479988776', email: 'mario@example.com', city: 'Firenze' },
-        agentEmail: 'agent@cafcae.it', routeTeam: 'bangla', assignedTeam: 'bangla', status: 'Documenti mancanti', paymentStatus: 'In attesa pagamento', documentStatus: 'Documenti mancanti', cost: 12, commission: 5,
-        missingDocs: ['Giacenza media', 'Saldo conto'], uploads: ['Documento identità.pdf'], teamMessage: 'Caricare giacenza media e saldo conto di tutti i componenti.', createdAt: today(), updatedAt: today(), delega: false, signature: false
-      },
-      {
-        id: 'p-naspi-demo', code: 'PAT-NASPI-2026-0003', source: 'bangla', group: 'Patronato', serviceKey: 'naspi', serviceTitle: 'NASpI',
-        client: { firstName: 'Farid', lastName: 'Labiad', cf: 'LBDFRD99B19Z330M', phone: '+39 3501234567', email: 'farid@example.com', city: 'Firenze' },
-        agentEmail: '', routeTeam: 'italy', assignedTeam: 'italy', status: 'In lavorazione', paymentStatus: 'Pagato', documentStatus: 'Documenti ricevuti', cost: 18, commission: 0, missingDocs: [], uploads: ['Contratto.pdf'], teamMessage: 'Passata a Team Italy per invio Patronato.', createdAt: today(), updatedAt: today()
-      }
-    ];
-    STATE.wallet = [
-      { id: 'w1', agentEmail: 'agent@cafcae.it', type: 'plus', amount: 250, reason: 'Credito iniziale admin', date: '2026-06-20' },
-      { id: 'w2', agentEmail: 'agent@cafcae.it', type: 'minus', amount: 20, reason: 'Creazione Modello 730 CAF-730-2026-0001', date: '2026-06-23' },
-      { id: 'w3', agentEmail: 'agent@cafcae.it', type: 'minus', amount: 12, reason: 'Creazione ISEE / DSU CAF-ISEE-2026-0002', date: today() }
-    ];
-    STATE.creditRequests = [{ id: 'cr1', agentEmail: 'agent@cafcae.it', agentName: 'Usman Ali', amount: 100, status: 'Pending', date: today() }];
-    STATE.companies = [{ id: 'co1', name: 'Almoni Express di Mollah Imran', type: 'Ditta individuale', vat: 'IT00000000000', cf: 'MLLMRN03E22Z249L', ateco: '47.41.00', regime: 'Forfettario', pec: 'almoniexpress@pec.it', sdi: '0000000', email: 'almoniexpress@gmail.com', phone: '+39 353 375 5988', address: 'Firenze', city: 'Firenze', owner: 'Imran Mollah', deadline: '2026-07-16' }];
-    STATE.invoices = [{ id: 'inv1', companyId: 'co1', type: 'Fattura vendita', client: 'Cliente Demo', desc: 'Servizio CAF', net: 100, vatRate: 22, total: 122, status: 'Inviata', due: '2026-07-10', message: 'Fattura inviata al cliente.' }];
-    STATE.communications = [{ id: 'c1', target: 'commercialista', title: 'Nuova fattura caricata', message: 'Fattura inviata per Almoni Express', date: today() }];
+
+    STATE.pratiche = [];
+    STATE.wallet = [];
+    STATE.creditRequests = [];
+    STATE.companies = [];
+    STATE.invoices = [];
+    STATE.communications = [];
+    STATE.tickets = [];
+    STATE.agentClients = [];
+    STATE.modifyRequests = [];
+    STATE.dailyReports = [];
+    STATE.receipts = [];
+    STATE.teamActions = [];
     STATE.researchLinks = CATALOG.sourceLinks || [];
-    STATE.tickets = [{ id:'t1', creatorRole:'agent', creatorEmail:'agent@cafcae.it', subject:'Errore documento 730', praticaCode:'CAF-730-2026-0001', message:'Cliente deve reinviare CU seconda pagina.', status:'Open', progress:'In analisi admin', date: today() }];
     sanitizeUsers();
     saveState();
   }
-
 
   function ensureState() {
     STATE.notices ||= [];
@@ -145,8 +132,8 @@
   function saveState() {
     sanitizeUsers();
     const copy = { ...STATE, session: null, signatureDataUrl: '', signature730DataUrl: '', banglaSignatureDataUrl: '', chartRefs: {} };
+    localStorage.setItem('caf_cae_v13_state', JSON.stringify(copy));
     localStorage.setItem('caf_cae_v12_state', JSON.stringify(copy));
-    localStorage.setItem('caf_cae_v11_state', JSON.stringify(copy));
     if (window.CAF_CAE_API?.enabled?.() && STATE.session) {
       window.CAF_CAE_API.pushSnapshot(STATE, STATE.session).catch(() => showToast('Offline backend: salvato localmente.', 'warning'));
     }
@@ -716,8 +703,16 @@
     $('#adminCreditTotal').textContent = money(creditTotal);
     $('#adminCommissionPending').textContent = money(commissionPending);
     $('#adminSalaryMonth').textContent = money(salaryMonth);
+    $('#adminActiveUsersCount') && ($('#adminActiveUsersCount').textContent = STATE.users.filter(u => u.active !== false).length);
+    $('#adminUsersMiniCount') && ($('#adminUsersMiniCount').textContent = `${STATE.users.length} utenti`);
+    $('#adminRoleSummary') && ($('#adminRoleSummary').innerHTML = ['admin','agent','commercialista','bangla','italy'].map(role => {
+      const list = STATE.users.filter(u => u.role === role);
+      return `<div class="role-summary-card"><span>${role}</span><strong>${list.length}</strong><small>${list.filter(u => u.active !== false).length} attivi</small></div>`;
+    }).join(''));
+    $('#adminOrderAgent') && ($('#adminOrderAgent').innerHTML = '<option value="">Creato da Admin</option>' + STATE.users.filter(u => u.role === 'agent' && u.active !== false).map(u => `<option value="${safe(u.email)}">${safe(u.name)} · ${safe(u.email)}</option>`).join(''));
+    $('#adminTodayWork') && ($('#adminTodayWork').innerHTML = (STATE.dailyReports || []).filter(r => (r.reportDate || r.date || '').slice(0,10) === today()).slice(0,6).map(r => `<div class="flat-item"><div><div class="title">${safe(r.name || r.userEmail || r.role)}</div><div class="meta">${safe(r.role)} · completate ${safe(r.done || 0)} · problemi ${safe(r.issues || 0)}<br>${safe(r.note || '')}</div></div>${statusChip('Oggi')}</div>`).join('') || emptyFlat('Nessun report oggi','Team Bangla e Team Italy invieranno qui il lavoro giornaliero.'));
     $('#adminTimeline').innerHTML = [...STATE.wallet].slice(0, 10).map(w => `<div class="timeline-item"><span>${w.date}</span><div><b>${w.reason}</b><div class="meta">${w.agentEmail}</div></div><span class="amount ${w.type}">${w.type === 'plus' ? '+' : '-'}${money(w.amount)}</span></div>`).join('');
-    $('#adminUsersList').innerHTML = STATE.users.map(u => `<div class="flat-item"><div><div class="title">${u.name}</div><div class="meta">${u.role} · ${u.email} · ${u.active ? 'Attivo' : 'Disattivato'}</div></div><button class="btn red" data-toggle-user="${u.id}">${u.active ? 'Disattiva' : 'Attiva'}</button></div>`).join('');
+    $('#adminUsersList').innerHTML = STATE.users.map(u => `<div class="flat-item admin-user-row"><div><div class="title">${safe(u.name || '--')} ${u.active === false ? '<span class="chip red">OFF</span>' : '<span class="chip green">ON</span>'}</div><div class="meta"><b>${safe(u.role || '--')}</b> · username <code>${safe(u.username || '')}</code> · ${safe(u.email || '--')}<br>Telefono: ${safe(u.phone || '--')} · Sede: ${safe(u.office || '--')} · Credito: ${money(u.credit || agentCredit(u.email))} · Salary: ${money(u.salary || 0)}</div></div><div class="admin-user-actions"><button class="btn light" data-reset-user-pass="${safe(u.id)}"><i class="fa-solid fa-key"></i> Reset</button><button class="btn red" data-toggle-user="${safe(u.id)}">${u.active !== false ? 'Disattiva' : 'Attiva'}</button></div></div>`).join('');
     const modifyHtml = (STATE.modifyRequests || [])
       .filter(r => r.status === 'Pending')
       .map(r => `<div class="flat-item agent-permission"><div><div class="title">Modifica richiesta: ${safe(r.praticaCode)}</div><div class="meta">${safe(r.agentName)} · ${safe(r.reason)}</div></div><button class="btn green" data-approve-modify="${safe(r.id)}">Approva modifica</button></div>`)
@@ -727,8 +722,13 @@
       .join('');
     $('#adminCreditRequests').innerHTML = (modifyHtml + creditHtml) || emptyFlat('Nessuna richiesta', 'Richieste credito agenti/modifiche appariranno qui.');
     $('#adminPraticheTable').innerHTML = table(['Codice', 'Source', 'Cliente', 'Servizio', 'Team', 'Stato', 'Costo', 'Commissione','Azioni'], STATE.pratiche.map(p => [p.code, p.source, fullName(p.client), p.serviceTitle, p.assignedTeam || '--', statusChip(p.status), money(p.cost), money(p.commission), `<button class="btn light" data-detail="${p.id}">Apri</button> <button class="btn orange" data-edit-status="${p.id}">Stato</button> <button class="btn light" data-add-docs="${p.id}">Docs</button> <button class="btn red" data-cancel-pratica="${p.id}">Cancel</button>`]));
-    $('#adminSalaryList').innerHTML = STATE.users.filter(u => ['bangla', 'italy'].includes(u.role)).map(u => `<div class="flat-item"><div><div class="title">${u.name}</div><div class="meta">${u.role} · ${u.email}</div></div><b>${money(u.salary)}</b></div>`).join('');
-    $('#adminCommissionList').innerHTML = STATE.pratiche.filter(p => p.agentEmail).map(p => `<div class="flat-item"><div><div class="title">${p.agentName || p.agentEmail} · ${p.code}</div><div class="meta">${p.serviceTitle} · ${p.commissionStatus || 'Pending'}</div></div><b>${money(p.commission)}</b></div>`).join('');
+    $('#adminSalaryList').innerHTML = STATE.users.filter(u => ['bangla', 'italy'].includes(u.role)).map(u => {
+      const reports = (STATE.dailyReports || []).filter(r => (r.userEmail || r.email) === u.email || r.role === u.role);
+      return `<div class="flat-item"><div><div class="title">${safe(u.name)}</div><div class="meta">${safe(u.role)} · ${safe(u.email)} · report: ${reports.length}</div></div><b>${money(u.salary)}</b></div>`;
+    }).join('') || emptyFlat('Nessun team registrato','Crea Team Bangla/Italy da sezione Team & utenti.');
+    $('#adminCommissionList').innerHTML = STATE.pratiche.filter(p => p.agentEmail).map(p => `<div class="flat-item"><div><div class="title">${safe(p.agentName || p.agentEmail)} · ${safe(p.code)}</div><div class="meta">${safe(p.serviceTitle)} · ${safe(p.commissionStatus || 'Pending')}</div></div><b>${money(p.commission)}</b></div>`).join('') || emptyFlat('Nessuna commissione','Le commissioni agent appariranno qui.');
+    $('#adminDailyReports') && ($('#adminDailyReports').innerHTML = (STATE.dailyReports || []).slice(0,30).map(r => `<div class="flat-item"><div><div class="title">${safe(r.name || r.userEmail || r.role)} · ${safe(r.reportDate || r.date || today())}</div><div class="meta">Ruolo: ${safe(r.role)} · completate: ${safe(r.done || 0)} · problemi: ${safe(r.issues || 0)}<br>${safe(r.note || '')}</div></div>${statusChip(r.role || 'team')}</div>`).join('') || emptyFlat('Nessun daily report','I report salvati da Team Bangla/Italy appariranno qui.'));
+    $('#adminTeamActions') && ($('#adminTeamActions').innerHTML = (STATE.teamActions || []).slice(0,30).map(a => `<div class="timeline-item"><span>${safe(a.date || today())}</span><div><b>${safe(a.action || 'Azione team')}</b><div class="meta">${safe(a.by || a.role || '--')} · ${safe(a.code || a.praticaCode || '')}</div></div></div>`).join('') || emptyFlat('Nessuna azione team','Le azioni sulle pratiche appariranno qui.'));
   }
 
   function table(headers, rows) {
@@ -931,16 +931,18 @@
     const password = $('#adPassword').value.trim();
     if (!password || password.length < 8) return showToast('Password minima 8 caratteri.', 'warning');
     if (STATE.users.some(u => u.email === email || u.username === username)) return showToast('Email/username già esistente.', 'error');
+    const selectedRole = $('#adRole').value;
     const payload = {
       name: $('#adName').value.trim(),
       email,
       username,
       password,
-      role: $('#adRole').value,
-      office: $('#adRole').selectedOptions[0].text,
-      credit: toNum($('#adCredit').value),
-      salary: ['bangla', 'italy'].includes($('#adRole').value) ? 1200 : 0,
-      active: true
+      role: selectedRole,
+      phone: $('#adPhone')?.value.trim() || '',
+      office: $('#adOffice')?.value.trim() || $('#adRole').selectedOptions[0].text,
+      credit: toNum($('#adCredit')?.value),
+      salary: toNum($('#adSalary')?.value) || (['bangla', 'italy'].includes(selectedRole) ? 1200 : 0),
+      active: ($('#adActive')?.value || 'true') === 'true'
     };
     try {
       const created = await window.CAF_CAE_API?.createUser?.(payload);
@@ -954,6 +956,102 @@
       showToast('User creato in backend con password sicura.');
     } catch (err) {
       showToast(err.message || 'Errore creazione user backend.', 'error');
+    }
+  }
+
+
+
+  function submitAdminPratica(e) {
+    e.preventDefault();
+    if (STATE.session?.role !== 'admin') return showToast('Solo admin può creare pratiche.', 'error');
+    const selected = serviceByKey($('#adminOrderService')?.value) || { group: 'CAF', key: $('#adminOrderService')?.value || 'admin-order', title: $('#adminOrderService')?.selectedOptions?.[0]?.textContent || 'Pratica Admin', cost: toNum($('#adminOrderCost')?.value), commission: 0 };
+    const team = $('#adminOrderTeam')?.value || 'bangla';
+    const agentEmail = $('#adminOrderAgent')?.value || '';
+    const agent = STATE.users.find(u => u.email === agentEmail);
+    const client = {
+      firstName: $('#adminOrderFirst')?.value || '',
+      lastName: $('#adminOrderLast')?.value || '',
+      cf: ($('#adminOrderCf')?.value || '').toUpperCase(),
+      phone: $('#adminOrderPhone')?.value || '',
+      email: $('#adminOrderEmail')?.value || ''
+    };
+    if (!client.firstName || !client.lastName) return showToast('Inserisci nome e cognome cliente.', 'warning');
+    const cost = toNum($('#adminOrderCost')?.value || selected.cost || 0);
+    const pratica = {
+      id: `p-${Date.now()}`,
+      code: makeCode(selected.group || 'CAF', selected.key || 'admin-order'),
+      source: 'admin',
+      group: selected.group || 'CAF',
+      serviceKey: selected.key || slug(selected.title),
+      serviceTitle: selected.title || 'Pratica Admin',
+      client,
+      agentEmail,
+      agentName: agent?.name || '',
+      routeTeam: team,
+      assignedTeam: team,
+      status: 'Nuova',
+      paymentStatus: $('#adminOrderPayment')?.value || 'Pagato',
+      documentStatus: 'Da verificare',
+      cost,
+      commission: agentEmail ? Number(selected.commission || 0) : 0,
+      commissionStatus: agentEmail ? 'Pending' : 'N/A',
+      missingDocs: [],
+      checkedDocs: [],
+      uploads: [],
+      teamMessage: $('#adminOrderNote')?.value || 'Pratica creata da Admin e assegnata al team.',
+      serviceData: { priority: $('#adminOrderPriority')?.value || 'Normale', createdFromAdmin: true },
+      deadline: $('#adminOrderDeadline')?.value || today(),
+      teamHistory: [{ by: STATE.session.name, role: 'admin', action: 'Pratica creata da Admin', date: today() }],
+      createdAt: today(),
+      updatedAt: today()
+    };
+    STATE.pratiche.unshift(pratica);
+    STATE.teamActions.unshift({ id: `ta-${Date.now()}`, by: STATE.session.name, role: 'admin', action: `Creata pratica ${pratica.code}`, code: pratica.code, date: today() });
+    saveState();
+    e.target.reset();
+    renderAll();
+    switchSimple('admin', 'admin-pratiche');
+    showToast(`Pratica ${pratica.code} creata e assegnata a ${team}.`);
+  }
+
+  async function changeOwnPassword() {
+    if (!STATE.session) return;
+    const currentPassword = prompt('Password attuale:');
+    if (currentPassword === null) return;
+    const newPassword = prompt('Nuova password (minimo 8 caratteri):');
+    if (newPassword === null) return;
+    if (String(newPassword).length < 8) return showToast('La nuova password deve avere almeno 8 caratteri.', 'warning');
+    if (newPassword === '123') return showToast('Non puoi usare la vecchia password demo.', 'error');
+    const confirmPassword = prompt('Conferma nuova password:');
+    if (confirmPassword !== newPassword) return showToast('Le password non coincidono.', 'error');
+    try {
+      await window.CAF_CAE_API?.changePassword?.(currentPassword, newPassword);
+      showToast('Password aggiornata. Rifai login con la nuova password.', 'success');
+      try { await window.CAF_CAE_API?.logout?.(); } catch (_) {}
+      STATE.session = null;
+      localStorage.removeItem('caf_cae_v12_session');
+      localStorage.removeItem('caf_cae_v11_session');
+      localStorage.removeItem('caf_cae_v8_session');
+      $('#appShell').classList.add('hidden');
+      $('#loginOverlay').classList.remove('hidden');
+    } catch (err) {
+      showToast(err.message || 'Errore cambio password.', 'error');
+    }
+  }
+
+  async function resetAdminUserPassword(id) {
+    if (STATE.session?.role !== 'admin') return showToast('Solo admin può resettare password.', 'error');
+    const u = STATE.users.find(x => x.id === id);
+    if (!u) return showToast('Utente non trovato.', 'error');
+    const password = prompt(`Nuova password per ${u.name || u.email} (minimo 8 caratteri):`);
+    if (password === null) return;
+    if (String(password).length < 8) return showToast('Password minima 8 caratteri.', 'warning');
+    if (password === '123') return showToast('Non usare la vecchia password demo.', 'error');
+    try {
+      await window.CAF_CAE_API?.updateUserPassword?.(id, password);
+      showToast('Password utente aggiornata nel backend.', 'success');
+    } catch (err) {
+      showToast(err.message || 'Errore reset password utente.', 'error');
     }
   }
 
@@ -1028,6 +1126,7 @@
       $('#loginOverlay').classList.remove('hidden');
       showToast('Logout effettuato.', 'warning');
     });
+    $('#btnChangePassword')?.addEventListener('click', changeOwnPassword);
 
     $('#forgotPasswordBtn')?.addEventListener('click', async () => {
       const email = prompt('Inserisci email del tuo account CAF CAE:');
@@ -1066,7 +1165,8 @@
       const cancelP = e.target.closest('[data-cancel-pratica]'); if (cancelP) cancelPratica(cancelP.dataset.cancelPratica);
       const receiptI = e.target.closest('[data-italy-receipt]'); if (receiptI) italyReceiptPrompt(receiptI.dataset.italyReceipt);
       const backB = e.target.closest('[data-back-bangla]'); if (backB) backToBangla(backB.dataset.backBangla);
-      const toggle = e.target.closest('[data-toggle-user]'); if (toggle) { const u = STATE.users.find(x => x.id === toggle.dataset.toggleUser); if (u && u.id !== STATE.session.id) { u.active = !u.active; saveState(); renderAll(); } }
+      const resetUserPass = e.target.closest('[data-reset-user-pass]'); if (resetUserPass) resetAdminUserPassword(resetUserPass.dataset.resetUserPass);
+      const toggle = e.target.closest('[data-toggle-user]'); if (toggle) { const u = STATE.users.find(x => x.id === toggle.dataset.toggleUser); if (u && u.id !== STATE.session.id) { u.active = !u.active; window.CAF_CAE_API?.patch?.(`/api/admin/users/${encodeURIComponent(u.id)}`, { active: u.active }).catch(() => showToast('Backend non aggiornato per stato user.', 'warning')); saveState(); renderAll(); } }
       const quad = e.target.closest('[data-quad]'); if (quad) { $$('.cgn-form-nav button').forEach(b => b.classList.remove('active')); quad.classList.add('active'); $$('.quad').forEach(q => q.classList.remove('active')); $(`#quad-${quad.dataset.quad}`).classList.add('active'); }
       const remove = e.target.closest('.remove-row'); if (remove) remove.closest('.cu-card,.family-card')?.remove();
     });
@@ -1078,6 +1178,7 @@
     $('#invoiceForm').addEventListener('submit', submitInvoice);
     $('#banglaOrderForm').addEventListener('submit', submitBanglaOrder);
     $('#adminUserForm').addEventListener('submit', submitAdminUser);
+    $('#adminPraticaForm')?.addEventListener('submit', submitAdminPratica);
     $('#clearSignatureBtn').addEventListener('click', () => { clearSignatureCanvas(); $('#signatureState').textContent = 'Non firmato'; });
     $('#agentDocUpload').addEventListener('change', () => { $('#uploadPreview').textContent = uploadedFiles().join(', ') || 'Nessun file caricato'; updateLivePreview(); });
     $('#t730_files').addEventListener('change', () => { $('#t730UploadPreview').textContent = uploadedFiles('#t730_files').join(', ') || 'Nessun documento'; });

@@ -59,11 +59,11 @@ docs/
    `API_URL: "http://localhost:3000"`
 6. Open `frontend/index.html` with Live Server.
 7. Login:
-   - `agent / 123`
-   - `commercialista / 123`
-   - `bangla / 123`
-   - `italy / 123`
-   - `admin / 123`
+   - `old demo credentials`
+   - secure commercialista password from Supabase/Admin
+   - secure Team Bangla password from Supabase/Admin
+   - secure Team Italy password from Supabase/Admin
+   - secure admin password from Supabase/Admin
 
 ## Production live mode
 

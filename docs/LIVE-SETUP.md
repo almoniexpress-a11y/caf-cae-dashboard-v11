@@ -73,9 +73,9 @@ POST https://api.cafcae.it/api/shopify/webhooks/app-uninstalled
 
 ## 7. Test live sync
 
-1. Login as `agent / 123`.
+1. Login with the secure password created in Supabase/Admin.
 2. Create one pratica.
-3. Login as `bangla / 123` in another browser.
+3. Login as Team Bangla with the secure password created in Supabase/Admin.
 4. Wait 25 seconds or refresh.
 5. Bangla sees the updated pratica.
 6. Admin can see all.

@@ -59,7 +59,7 @@ localStorage.clear();sessionStorage.clear();location.reload();
 Try old login:
 
 ```text
-agent / 123
+old demo credentials
 ```
 
 It must fail.
