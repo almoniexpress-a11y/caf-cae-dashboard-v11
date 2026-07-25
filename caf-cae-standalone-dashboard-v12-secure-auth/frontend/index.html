@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CAF CAE Secure Operations Dashboard v12</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js"></script>
+  <script defer src="config.js"></script>
+  <script defer src="api-client.js"></script>
+  <script defer src="products.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div id="toast" class="toast hidden"></div>
+
+  <div id="loginOverlay" class="login-screen">
+    <div class="login-panel">
+      <div class="login-logo-row">
+        <div class="login-logo"><img src="assets/caf-cae-logo.png" alt="CAF CAE" /></div>
+        <div>
+          <h1>CAF CAE</h1>
+          <p>CAF CAE professional operations portal · Agent · Team · Commercialista · Admin</p>
+        </div>
+      </div>
+      <div id="loginError" class="alert error hidden"></div>
+      <form id="loginForm" class="login-form">
+        <label>Username / Email</label>
+        <input id="loginUser" type="text" placeholder="agent" autocomplete="username" required />
+        <label>Password</label>
+        <input id="loginPass" type="password" placeholder="Inserisci password" autocomplete="current-password" required />
+        <button class="btn orange full" type="submit">Entra nel portale <i class="fa-solid fa-right-to-bracket"></i></button>
+      </form>
+      <div class="login-help-row">
+        <button id="forgotPasswordBtn" class="link-btn" type="button">Password dimenticata?</button>
+        <small>Accesso sicuro tramite backend CAF CAE</small>
+      </div>
+    </div>
+  </div>
+
+  <div id="appShell" class="app-shell hidden">
+    <header class="cgn-topbar">
+      <div class="top-left">
+        <button id="mobileMenuBtn" class="icon-btn grid"><i class="fa-solid fa-grip"></i></button>
+        <div class="cgn-logo"><img src="assets/caf-cae-logo.png" alt="CAF CAE" /><span>CAF CAE</span></div>
+      </div>
+      <div id="topBreadcrumb" class="breadcrumb">Home</div>
+      <div class="top-right">
+        <div class="office-pill"><span id="sessionName">--</span><small id="sessionRole">--</small></div>
+        <button id="btnLogout" class="icon-btn"><i class="fa-solid fa-power-off"></i></button>
+      </div>
+    </header>
+
+    <!-- AGENT DASHBOARD -->
+    <section id="dashboard-agent" class="role-dashboard hidden">
+      <aside class="cgn-sidebar agent-sidebar">
+        <button class="back-line" data-agent-tab="agent-home"><i class="fa-solid fa-arrow-left"></i> Home agente</button>
+        <div class="side-search"><i class="fa-solid fa-search"></i><input id="agentServiceSearch" placeholder="Cerca servizio..." /></div>
+        <div class="side-menu-title">Servizi disponibili</div>
+        <div id="agentServiceMenu" class="service-menu"></div>
+        <div class="side-footer-card">
+          <span>Credito agente</span>
+          <strong id="agentSideCredit">€0,00</strong>
+          <button class="mini-link" data-agent-tab="agent-credit">Richiedi credito</button>
+        </div>
+      </aside>
+      <main class="cgn-main">
+        <div class="cgn-actionbar">
+          <div><b>Portale Agente</b> · <span id="agentSelectedServiceLabel">Nessun servizio selezionato</span></div>
+          <div class="actionbar-actions">
+            <button class="btn light" data-agent-tab="agent-home">Dashboard</button>
+            <button class="btn light" data-agent-tab="agent-pratiche">Le mie pratiche</button>
+            <button class="btn light" data-agent-tab="agent-clients"><i class="fa-solid fa-users"></i> I miei clienti</button>
+            <button class="btn light" data-agent-tab="agent-modifiche"><i class="fa-solid fa-pen-to-square"></i> Modifiche</button>
+            <button class="btn light" data-agent-tab="agent-profile"><i class="fa-solid fa-id-card"></i> Profilo</button>
+            <button class="btn light" data-agent-tab="agent-notices"><i class="fa-solid fa-bell"></i> Avvisi & Scadenze</button>
+            <button class="btn light" data-agent-tab="agent-ticket"><i class="fa-solid fa-ticket"></i> Ticket</button><button class="btn light" data-agent-tab="agent-sources"><i class="fa-solid fa-book"></i> Fonti</button><button class="btn orange" id="agentQuickNewBtn"><i class="fa-solid fa-plus"></i> Crea domanda</button>
+          </div>
+        </div>
+
+        <div id="agent-home" class="agent-tab active">
+          <div class="kpi-row">
+            <div class="kpi white"><span>Credito disponibile</span><strong id="agentCreditBalance">€0,00</strong><small>auto scalato per pratica</small></div>
+            <div class="kpi white"><span>Pratiche totali</span><strong id="agentTotalPratiche">0</strong><small>solo tuoi clienti</small></div>
+            <div class="kpi white"><span>In lavorazione</span><strong id="agentWorkingCount">0</strong><small>Bangla / Italy</small></div>
+            <div class="kpi white"><span>Documenti mancanti</span><strong id="agentMissingCount">0</strong><small>da completare</small></div>
+            <div class="kpi white"><span>Commissione pending</span><strong id="agentCommissionPending">€0,00</strong><small>non pagata</small></div>
+          </div>
+          <div class="agent-notice-grid">
+            <div class="notice-card urgent"><div><span>Scadenze urgenti</span><strong id="agentUrgentCount">0</strong><small>da controllare entro 7 giorni</small></div><i class="fa-solid fa-calendar-triangle-exclamation"></i></div>
+            <div class="notice-card success"><div><span>Pronte per completamento</span><strong id="agentReadyCount">0</strong><small>documenti ricevuti / in verifica</small></div><i class="fa-solid fa-circle-check"></i></div>
+            <div class="notice-card dark"><div><span>Notice operative</span><strong id="agentNoticeCount">0</strong><small>messaggi admin/team</small></div><i class="fa-solid fa-bullhorn"></i></div>
+          </div>
+          <div class="white-card notice-board"><div class="card-head"><h3>Notice board agente</h3><button class="link-btn" data-agent-tab="agent-notices">apri notice</button></div><div id="agentHomeNoticeList" class="flat-list compact"></div></div>
+          <div class="grid-2">
+            <div class="white-card">
+              <div class="card-head"><h3>Andamento pratiche</h3><button class="link-btn" data-agent-tab="agent-pratiche">vedi tutto</button></div>
+              <canvas id="agentChartStatus"></canvas>
+            </div>
+            <div class="white-card">
+              <div class="card-head"><h3>Transazioni credito</h3><button class="link-btn" data-agent-tab="agent-credit">wallet</button></div>
+              <div id="agentCreditTimeline" class="timeline-list"></div>
+            </div>
+          </div>
+          <div class="white-card">
+            <div class="card-head"><h3>Avvisi team / documenti mancanti</h3><button class="link-btn" data-agent-tab="agent-missing">gestisci</button></div>
+            <div id="agentAlertsList" class="flat-list"></div>
+          </div>
+        </div>
+
+        <div id="agent-new" class="agent-tab">
+          <div class="split-workspace">
+            <div class="white-card form-card">
+              <div class="card-head sticky-head">
+                <div>
+                  <h3 id="agentFormTitle">Nuova domanda</h3>
+                  <p id="agentFormSubtitle">Seleziona un servizio dal menu laterale. Il form cambia in base al servizio.</p>
+                </div>
+                <div class="service-cost-pill">Costo: <strong id="agentServiceCost">€0,00</strong></div>
+              </div>
+              <form id="agentApplicationForm">
+                <input type="hidden" id="agentServiceKey" />
+                <input type="hidden" id="agentServiceTitle" />
+                <input type="hidden" id="agentServiceGroup" />
+                <input type="hidden" id="agentEditingPraticaId" />
+
+                <div class="form-section soft-title">Cliente pratica</div>
+                <div class="form-grid cols-3 client-pick-row">
+                  <label>Cliente esistente <select id="agentExistingClient"><option value="">Nuovo cliente</option></select></label>
+                  <label>Protocollo / riferimento cliente <input id="agentClientReference" placeholder="es. WhatsApp, Shopify #1001, sede Prato" /></label>
+                  <label>Priorità <select id="agentPriority"><option>Normale</option><option>Urgente</option><option>Scadenza vicina</option></select></label>
+                </div>
+                <p class="hint-line">Il cliente viene salvato automaticamente. Dalla scheda cliente potrai vedere tutte le sue domande, documenti e ricevute.</p>
+
+                <div class="form-section blue-title">Dati anagrafici cliente</div>
+                <div class="form-grid cols-3">
+                  <label>Codice fiscale <input id="clientCF" maxlength="16" required /></label>
+                  <label>Cognome <input id="clientLastName" required /></label>
+                  <label>Nome <input id="clientFirstName" required /></label>
+                  <label>Sesso <select id="clientSex"><option>M</option><option>F</option></select></label>
+                  <label>Data nascita <input id="clientDob" type="date" /></label>
+                  <label>Comune/Stato nascita <input id="clientBirthPlace" /></label>
+                  <label>Provincia nascita <input id="clientBirthProvince" /></label>
+                  <label>Cittadinanza <input id="clientNationality" /></label>
+                  <label>Stato civile <select id="clientMarital"><option>Celibe/Nubile</option><option>Coniugato/a</option><option>Separato/a</option><option>Divorziato/a</option><option>Vedovo/a</option></select></label>
+                </div>
+
+                <div class="form-section green-title">Residenza e contatti</div>
+                <div class="form-grid cols-3">
+                  <label>Comune <input id="clientCity" /></label>
+                  <label>Provincia <input id="clientProvince" /></label>
+                  <label>CAP <input id="clientCap" /></label>
+                  <label>Tipologia <select id="clientStreetType"><option>VIA</option><option>PIAZZA</option><option>VIALE</option><option>CORSO</option></select></label>
+                  <label>Indirizzo <input id="clientAddress" /></label>
+                  <label>N. civico <input id="clientStreetNo" /></label>
+                  <label>Telefono <input id="clientPhone" /></label>
+                  <label>Email <input id="clientEmail" type="email" /></label>
+                  <label>IBAN <input id="clientIban" /></label>
+                </div>
+
+                <div id="serviceSpecificArea"></div>
+
+                <div class="form-section orange-title">Documenti, delega e firma</div>
+                <div class="delegation-box">
+                  <label class="checkbox-row"><input id="delegaAccepted" type="checkbox" /> Il cliente conferisce delega a CAF CAE / incaricato per gestione pratica, accesso dati e comunicazioni necessarie.</label>
+                  <label class="checkbox-row"><input id="privacyAccepted" type="checkbox" /> Il cliente accetta informativa privacy e trattamento dati per il servizio richiesto.</label>
+                </div>
+                <div id="docChecklist" class="doc-checklist"></div>
+                <label class="upload-box">Carica documenti
+                  <input id="agentDocUpload" type="file" multiple />
+                  <span id="uploadPreview">Nessun file caricato</span>
+                </label>
+                <div class="signature-box">
+                  <div class="signature-head"><b>Firma cliente</b><span>firma con mouse o dito</span></div>
+                  <canvas id="signaturePad" width="720" height="180"></canvas>
+                  <div class="sig-actions"><button type="button" class="btn light" id="clearSignatureBtn">Cancella firma</button><span id="signatureState">Non firmato</span></div>
+                </div>
+
+                <div class="submit-strip">
+                  <div>
+                    <strong id="submitCostText">Costo pratica: €0,00</strong>
+                    <span id="submitCreditText">Credito disponibile: €0,00</span>
+                  </div>
+                  <button class="btn orange" type="submit"><i class="fa-solid fa-paper-plane"></i> Invia domanda</button>
+                </div>
+              </form>
+            </div>
+            <div class="white-card preview-card">
+              <div class="card-head"><h3>Anteprima domanda</h3><span id="previewStatus" class="status chip">Bozza</span></div>
+              <div id="agentLivePreview" class="document-preview"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="agent-730" class="agent-tab">
+          <div class="cgn-730-shell">
+            <aside class="cgn-form-nav">
+              <button class="active" data-quad="frontespizio">Frontespizio</button>
+              <button data-quad="familiari">Familiari</button>
+              <button data-quad="sostituto">Sostituto d'imposta</button>
+              <button data-quad="quadro-a">A - Terreni</button>
+              <button data-quad="quadro-b">B - Fabbricati</button>
+              <button data-quad="quadro-c">C - Reddito lavoro e CU</button>
+              <button data-quad="quadro-d">D - Altri redditi</button>
+              <button data-quad="quadro-e">E - Oneri e spese</button>
+              <button data-quad="quadro-f">F/G - Acconti e crediti</button>
+              <button data-quad="scelte">730/1 - Scelte 8-5-2 x1000</button>
+              <button data-quad="delega">Delega e documenti</button>
+              <button data-quad="risultato">730/3 - Liquidazione e F24</button>
+            </aside>
+            <div class="cgn-form-main">
+              <div class="cgn-form-toolbar"><b>730 - 2026</b><span id="cgn730ClientTitle">Nuovo contribuente</span><button class="btn orange" id="submit730FromPanel">Invia domanda</button></div>
+              <form id="agent730Form" class="cgn-form-panel">
+                <div class="quad active" id="quad-frontespizio">
+                  <h2>Frontespizio</h2>
+                  <div class="peach-section"><b>Contribuente / tipo dichiarazione</b><div class="form-grid cols-4">
+                    <label>Codice fiscale <input id="t730_cf" maxlength="16" /></label><label>Cognome <input id="t730_last" /></label><label>Nome <input id="t730_first" /></label><label>Sesso <select id="t730_sex"><option>M</option><option>F</option></select></label>
+                    <label>Data nascita <input id="t730_dob" type="date" /></label><label>Comune/Stato nascita <input id="t730_birth" /></label><label>Provincia <input id="t730_birthProv" /></label><label>Stato civile <select id="t730_marital"><option>CELIBE/NUBILE</option><option>CONIUGATO/A</option><option>SEPARATO/A</option><option>DIVORZIATO/A</option><option>VEDOVO/A</option></select></label>
+                    <label>730 integrativo <select id="t730_integrativo"><option>No</option><option>Sì</option></select></label><label>Dichiarazione congiunta <select id="t730_congiunta"><option>No</option><option>Sì</option></select></label><label>Soggetto fiscalmente a carico <select id="t730_a_carico"><option>No</option><option>Sì</option></select></label><label>Situazioni particolari <input id="t730_situazioni" /></label>
+                  </div></div>
+                  <div class="peach-section"><b>Residenza anagrafica</b><div class="form-grid cols-4"><label>Comune <input id="t730_city" /></label><label>Provincia <input id="t730_prov" /></label><label>CAP <input id="t730_cap" /></label><label>Codice comune <input id="t730_cityCode" /></label><label>Tipologia <input id="t730_streetType" value="VIA" /></label><label>Indirizzo <input id="t730_address" /></label><label>N. civico <input id="t730_no" /></label><label>Cellulare <input id="t730_phone" /></label><label>Email <input id="t730_email" type="email" /></label><label>Domicilio fiscale 01/01/2025 <input id="t730_dom2025" /></label><label>Domicilio fiscale 01/01/2026 <input id="t730_dom2026" /></label><label>Prima dichiarazione <select id="t730_first_decl"><option>No</option><option>Sì</option></select></label><label>Telefono fisso <input id="t730_tel" /></label><label>Uso interno <select id="t730_uso_interno"><option>No</option><option>Sì</option></select></label><label>Comune domicilio regionale <input id="t730_dom_reg" /></label></div></div>
+                </div>
+                <div class="quad" id="quad-familiari"><h2>Familiari a carico</h2><div id="familyRows"></div><button type="button" class="btn light" id="addFamilyRow">+ Aggiungi familiare</button></div>
+                <div class="quad" id="quad-sostituto"><h2>Sostituto d'imposta</h2><div class="peach-section"><div class="form-grid cols-3"><label>730 senza sostituto <select id="t730_noSub"><option>No</option><option>Sì</option></select></label><label>Codice fiscale sostituto <input id="t730_subCF" /></label><label>Denominazione <input id="t730_subName" /></label><label>Indirizzo <input id="t730_subAddress" /></label><label>Comune <input id="t730_subCity" /></label><label>CAP <input id="t730_subCap" /></label></div></div></div>
+                <div class="quad" id="quad-quadro-a"><h2>Quadro A - Terreni</h2><div class="peach-section"><div class="table-wrap"><table><thead><tr><th>Rigo</th><th>Reddito dominicale</th><th>Titolo</th><th>Reddito agrario</th><th>Giorni</th><th>%</th><th>Canone</th><th>Comune</th></tr></thead><tbody id="t730TerreniRows"><tr><td>A1</td><td><input></td><td><input></td><td><input></td><td><input></td><td><input></td><td><input></td><td><input></td></tr><tr><td>A2</td><td><input></td><td><input></td><td><input></td><td><input></td><td><input></td><td><input></td><td><input></td></tr></tbody></table></div></div></div>
+                <div class="quad" id="quad-quadro-b"><h2>Quadro B - Fabbricati</h2><div class="peach-section"><div class="table-wrap"><table><thead><tr><th>Rigo</th><th>Rendita</th><th>Utilizzo</th><th>Giorni</th><th>%</th><th>Canone</th><th>Codice comune</th><th>Cedolare</th></tr></thead><tbody><tr><td>B1</td><td><input></td><td><input></td><td><input></td><td><input></td><td><input></td><td><input></td><td><input type="checkbox"></td></tr><tr><td>B2</td><td><input></td><td><input></td><td><input></td><td><input></td><td><input></td><td><input></td><td><input type="checkbox"></td></tr></tbody></table></div></div></div>
+                <div class="quad" id="quad-quadro-c"><h2>Quadro C - Redditi lavoro dipendente e CU</h2><div class="info-blue">Aggiungi una o più CU. Il risultato è una stima interna per pre-controllo agente/team.</div><div id="cuRows"></div><button type="button" class="btn light" id="addCuRow">+ Aggiungi CU</button></div>
+                <div class="quad" id="quad-quadro-d"><h2>Quadro D - Altri redditi</h2><div class="peach-section"><div class="form-grid cols-3"><label>D1 Utili/proventi <input id="t730_d1" type="number" step="0.01"></label><label>D4 Redditi diversi <input id="t730_d4" type="number" step="0.01"></label><label>D5 Occasionale <input id="t730_d5" type="number" step="0.01"></label><label>Ritenute D <input id="t730_d_rit" type="number" step="0.01"></label></div></div></div>
+                <div class="quad" id="quad-quadro-e"><h2>Quadro E - Oneri e spese</h2><div class="form-grid cols-3"><label>Spese sanitarie E1 <input id="t730_medical" type="number" step="0.01" /></label><label>Mutuo E7 <input id="t730_mortgage" type="number" step="0.01" /></label><label>Affitto E71/E72 <input id="t730_rent" type="number" step="0.01" /></label><label>Scuola / università <input id="t730_school" type="number" step="0.01" /></label><label>Assicurazioni vita/infortuni <input id="t730_insurance" type="number" step="0.01" /></label><label>Contributi E21/E23 <input id="t730_contrib" type="number" step="0.01" /></label><label>Asilo nido / sport ragazzi <input id="t730_child" type="number" step="0.01" /></label><label>Spese funebri / veterinarie <input id="t730_otherFun" type="number" step="0.01" /></label><label>Bonus casa / ristrutturazione <input id="t730_bonusCasa" type="number" step="0.01" /></label><label>Risparmio energetico <input id="t730_energy" type="number" step="0.01" /></label><label>Altre spese 19% <input id="t730_other19" type="number" step="0.01" /></label><label>Note oneri <input id="t730_expenseNote" /></label></div></div>
+                <div class="quad" id="quad-quadro-f"><h2>Quadro F/G - Acconti e crediti</h2><div class="form-grid cols-3"><label>Acconti IRPEF già versati <input id="t730_acconti" type="number" step="0.01" /></label><label>Eccedenza precedente <input id="t730_eccedenza" type="number" step="0.01" /></label><label>Rate richieste <input id="t730_rate" type="number" value="1" min="1" max="7" /></label><label>Credito da compensare F24 <input id="t730_compensare" type="number" step="0.01" /></label><label>Non versare acconto IRPEF <select id="t730_no_acconto"><option>No</option><option>Sì</option></select></label><label>F24 / acconti da allegare <input id="t730_f24note" /></label></div></div>
+                <div class="quad" id="quad-scelte"><h2>730/1 - Scelte 8-5-2 x1000</h2><div class="peach-section"><div class="form-grid cols-3"><label>8 x 1000 <select id="t730_otto"><option>Nessuna scelta</option><option>Stato</option><option>Chiesa Cattolica</option><option>Altro</option></select></label><label>5 x 1000 <select id="t730_cinque"><option>Nessuna scelta</option><option>Terzo settore</option><option>Ricerca scientifica</option><option>Comune</option><option>Sport</option></select></label><label>2 x 1000 <select id="t730_due"><option>Nessuna scelta</option><option>Partito politico</option></select></label><label>Codice fiscale beneficiario <input id="t730_cf_benef"></label></div></div></div>
+                <div class="quad" id="quad-delega"><h2>Delega, privacy, firma e documenti</h2><div class="professional-delega"><h3>Delega professionale CAF CAE</h3><p>Il cliente conferisce mandato a CAF CAE e all’incaricato/agente per raccogliere documenti, gestire la pratica, accedere ai dati necessari, preparare la ricevuta e comunicare eventuali integrazioni al team.</p><div class="form-grid cols-3"><label>Anno delega <input id="t730_delega_year" value="2026"></label><label>Luogo firma <input id="t730_delega_place" value="Firenze"></label><label>Validità fino al <input id="t730_delega_valid" type="date"></label></div></div><div class="delegation-box"><label class="checkbox-row"><input id="t730_delega" type="checkbox" /> Conferisce delega accesso precompilato, CU, stringhe INPS/INAIL e banche dati necessarie per il servizio.</label><label class="checkbox-row"><input id="t730_privacy" type="checkbox" /> Accetta informativa privacy, trattamento dati particolari e conservazione documentale.</label><label class="checkbox-row"><input id="t730_firma_elettronica" type="checkbox" /> Autorizza firma elettronica / firma grafometrica su documenti generati.</label></div><label class="upload-box">Documenti 730 <input id="t730_files" type="file" multiple /><span id="t730UploadPreview">Nessun documento</span></label><div class="signature-box"><div class="signature-head"><b>Firma cliente 730</b><span>firma digitale delega 730</span></div><canvas id="signaturePad730" width="720" height="160"></canvas><div class="sig-actions"><button type="button" class="btn light" id="clearSignature730Btn">Cancella firma 730</button><span id="signature730State">Non firmato</span></div></div><div class="doc-actions"><button type="button" class="btn light" data-download-doc="delega-730">Scarica delega professionale</button><button type="button" class="btn light" data-download-doc="ricevuta-730">Scarica ricevuta 730-2</button><button type="button" class="btn light" data-download-doc="modello-730-auto">Scarica Modello 730 auto-compilato</button></div></div>
+                <div class="quad" id="quad-risultato"><h2>730/3 - Risultato della liquidazione e F24</h2><div id="result730Box" class="liquidation-box"></div><div class="peach-section"><b>Rate F24 se debito</b><div class="form-grid cols-4"><label>Rate saldo/primo acconto <input id="t730_rate2" type="number" value="1"></label><label>Scadenza prima rata <input id="t730_f24_due" type="date"></label><label>IBAN pagamento F24 <input id="t730_f24_iban"></label><label>Note rate <input id="t730_f24_rate_note"></label></div></div><button type="button" class="btn orange" id="calculate730Btn">Calcola risultato</button><button type="button" class="btn light" data-download-doc="f24-730">Scarica bozza F24</button><button type="button" class="btn light" data-download-doc="modello-730-auto">Scarica 730 auto-compilato PDF</button><button type="button" class="btn light" data-download-doc="delega-730-pdf">Scarica delega PDF</button></div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div id="agent-academy" class="agent-tab"><div class="white-card"><div class="card-head"><h3>Academy / Esame A2-B1 enroll</h3><button class="btn orange" data-service-key="esame-a2-b1">Nuovo esame</button></div><div id="agentAcademyList" class="flat-list"></div></div></div>
+        <div id="agent-notices" class="agent-tab"><div class="grid-2"><div class="white-card"><div class="card-head"><h3>Avvisi operativi</h3></div><div id="agentNoticeList" class="flat-list"></div></div><div class="white-card"><div class="card-head"><h3>Scadenze pratiche</h3></div><div id="agentDeadlineList" class="flat-list"></div></div></div></div>
+        <div id="agent-pratiche" class="agent-tab"><div class="white-card"><div class="card-head"><h3>Le mie pratiche</h3><input id="agentPraticheSearch" placeholder="Cerca cliente, CF, servizio..." /></div><div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Servizio</th><th>Team</th><th>Stato</th><th>Pagamento</th><th>Costo</th><th>Commissione</th><th>Azioni</th></tr></thead><tbody id="agentPraticheBody"></tbody></table></div></div></div>
+        <div id="agent-missing" class="agent-tab"><div class="white-card"><div class="card-head"><h3>Documenti / dati mancanti richiesti dal team</h3></div><div id="agentMissingList" class="flat-list"></div></div></div>
+        <div id="agent-credit" class="agent-tab"><div class="grid-2"><div class="white-card"><h3>Credit wallet</h3><div class="big-credit" id="agentWalletBig">€0,00</div><form id="creditRequestForm" class="inline-form"><input id="creditRequestAmount" type="number" step="0.01" placeholder="Importo da richiedere" /><button class="btn orange">Richiedi credito ad admin</button></form></div><div class="white-card"><h3>Movimenti credito</h3><div id="agentCreditMovements" class="timeline-list"></div></div></div></div>
+        <div id="agent-commission" class="agent-tab"><div class="white-card"><div class="card-head"><h3>Commissioni</h3></div><div id="agentCommissionList" class="flat-list"></div></div></div>
+        <div id="agent-clients" class="agent-tab"><div class="white-card"><div class="card-head"><h3>I miei clienti</h3><input id="agentClientSearch" placeholder="Cerca nome, telefono, codice fiscale..." /></div><div id="agentClientList" class="client-grid"></div></div></div>
+        <div id="agent-modifiche" class="agent-tab"><div class="grid-2"><div class="white-card"><h3>Richieste modifica pratica</h3><p class="meta">L'agente non modifica pratiche già inviate senza permesso. Chiede autorizzazione a Team/Admin e poi può correggere.</p><div id="agentModifyRequests" class="flat-list"></div></div><div class="white-card"><h3>Regola modifica</h3><div class="document-preview"><b>Workflow:</b><br>1. Apri una pratica.<br>2. Clicca <b>Richiedi modifica</b>.<br>3. Admin/Team approva.<br>4. L'agente modifica e reinvia senza scalare nuovo credito.<br><br>Questo protegge la pratica da errori e crea storico professionale.</div></div></div></div>
+        <div id="agent-profile" class="agent-tab"><div class="grid-2"><div class="white-card"><h3>Profilo agente</h3><div id="agentProfileBox" class="document-preview"></div></div><div class="white-card"><h3>Performance agente</h3><div id="agentPerformanceBox" class="flat-list"></div></div></div></div>
+        <div id="agent-ticket" class="agent-tab"><div class="grid-2"><div class="white-card"><h3>Nuovo ticket problema</h3><form id="agentTicketForm" class="form-grid cols-2"><label>Oggetto <input id="agentTicketSubject" required></label><label>Pratica collegata <input id="agentTicketPratica" placeholder="codice pratica"></label><label class="form-span">Messaggio <textarea id="agentTicketMessage" required></textarea></label><button class="btn orange form-span">Invia ticket ad Admin</button></form></div><div class="white-card"><h3>I miei ticket</h3><div id="agentTicketList" class="flat-list"></div></div></div></div><div id="agent-sources" class="agent-tab"><div class="white-card"><div class="card-head"><h3>Fonti ufficiali e link ricerca</h3></div><div id="agentSourcesList" class="flat-list"></div></div></div>
+      </main>
+    </section>
+
+    <!-- COMMERCIALISTA DASHBOARD -->
+    <section id="dashboard-commercialista" class="role-dashboard hidden simple-dashboard comm-dashboard-v10">
+      <aside class="cgn-sidebar comm-sidebar">
+        <div class="comm-side-brand">
+          <div class="comm-logo-dot"><i class="fa-solid fa-calculator"></i></div>
+          <div><strong>Commercialista</strong><small>Gestionale aziende</small></div>
+        </div>
+        <div class="side-search"><i class="fa-solid fa-search"></i><input id="commMenuSearch" placeholder="Cerca modulo..." /></div>
+        <div class="side-menu-title">Dashboard</div>
+        <button class="active" data-comm-tab="comm-home"><i class="fa-solid fa-chart-line"></i> Home Commercialista</button>
+        <div class="side-menu-title">Gestionale</div>
+        <button data-comm-tab="comm-clienti"><i class="fa-solid fa-users"></i> Clienti</button>
+        <button data-comm-tab="comm-ditta"><i class="fa-solid fa-user-plus"></i> Nuovo cliente / ditta</button>
+        <button data-comm-tab="comm-vendite"><i class="fa-solid fa-cash-register"></i> Vendite e incassi</button>
+        <button data-comm-tab="comm-pratiche"><i class="fa-solid fa-folder-open"></i> Pratiche</button>
+        <button data-comm-tab="comm-fattura"><i class="fa-solid fa-file-invoice"></i> Fatturazione</button>
+        <button data-comm-tab="comm-f24"><i class="fa-solid fa-file-contract"></i> F24 e contributi</button>
+        <button data-comm-tab="comm-dipendenti"><i class="fa-solid fa-id-badge"></i> Dipendenti</button>
+        <button data-comm-tab="comm-documenti"><i class="fa-solid fa-cloud-arrow-up"></i> Documenti</button>
+        <button data-comm-tab="comm-comms"><i class="fa-solid fa-comments"></i> Comunicazioni</button>
+        <button data-comm-tab="comm-scadenze"><i class="fa-solid fa-calendar-days"></i> Scadenze</button>
+        <div class="side-menu-title">Analisi & Sistema</div>
+        <button data-comm-tab="comm-piani"><i class="fa-solid fa-layer-group"></i> Piani e pagamenti</button>
+        <button data-comm-tab="comm-report"><i class="fa-solid fa-chart-pie"></i> Report</button>
+        <button data-comm-tab="comm-backup"><i class="fa-solid fa-database"></i> Backup</button>
+        <button data-comm-tab="comm-ticket"><i class="fa-solid fa-ticket"></i> Ticket</button>
+        <button data-comm-tab="comm-bio"><i class="fa-solid fa-address-card"></i> Bio aziende</button>
+        <div class="side-footer-card comm-side-mini"><span>Clienti attivi</span><strong id="commSideActive">0</strong><small id="commSideSync">Sync dashboard: pronto</small></div>
+      </aside>
+
+      <main class="cgn-main comm-main">
+        <div class="cgn-actionbar comm-actionbar">
+          <div>
+            <b>Area Commercialista</b>
+            <span class="muted">· gestione aziende, contabilità, F24, fatture e scadenze</span>
+          </div>
+          <div class="actionbar-actions">
+            <button class="btn light" data-comm-tab="comm-clienti"><i class="fa-solid fa-users"></i> Clienti</button>
+            <button class="btn light" data-comm-tab="comm-vendite"><i class="fa-solid fa-cash-register"></i> Chiusura oggi</button>
+            <button class="btn orange" data-comm-tab="comm-ditta"><i class="fa-solid fa-plus"></i> Nuova ditta</button>
+          </div>
+        </div>
+
+        <div id="comm-home" class="comm-tab active">
+          <div class="comm-hero-panel">
+            <div>
+              <span class="section-eyebrow">CAF CAE Commercialista</span>
+              <h2>Controllo operativo aziende</h2>
+              <p>Clienti, incassi, fatture, F24, dipendenti, documenti e comunicazioni in un unico pannello interno.</p>
+            </div>
+            <div class="comm-hero-actions">
+              <button class="btn blue" data-comm-tab="comm-vendite"><i class="fa-solid fa-cash-register"></i> Registra vendite</button>
+              <button class="btn light" data-comm-tab="comm-documenti"><i class="fa-solid fa-upload"></i> Carica documento</button>
+            </div>
+          </div>
+          <div class="kpi-row comm-kpis">
+            <div class="kpi white blue-top"><span>Clienti totali</span><strong id="commCompaniesCount">0</strong><small>aziende registrate</small></div>
+            <div class="kpi white green-top"><span>Clienti attivi</span><strong id="commActiveCount">0</strong><small>dashboard abilitata</small></div>
+            <div class="kpi white purple-top"><span>Nuovi mese</span><strong id="commNewMonthCount">0</strong><small>onboarding</small></div>
+            <div class="kpi white orange-top"><span>Fatturato mese</span><strong id="commMonthRevenue">€0,00</strong><small>fatture emesse</small></div>
+            <div class="kpi white green-top"><span>Incassi mese</span><strong id="commMonthReceived">€0,00</strong><small>pagamenti ricevuti</small></div>
+            <div class="kpi white blue-top"><span>Utile netto</span><strong id="commMonthBalance">€0,00</strong><small>stima periodo</small></div>
+            <div class="kpi white red-top"><span>F24 in scadenza</span><strong id="commF24UrgentCount">0</strong><small>entro 7 giorni</small></div>
+            <div class="kpi white red-top"><span>Documenti mancanti</span><strong id="commMissingDocsCount">0</strong><small>richieste aperte</small></div>
+            <div class="kpi white orange-top"><span>Pratiche attive</span><strong id="commPracticeActiveCount">0</strong><small>non completate</small></div>
+            <div class="kpi white red-top"><span>Ticket aperti</span><strong id="commOpenTicketsCount">0</strong><small>da risolvere</small></div>
+          </div>
+          <div class="grid-2 comm-main-grid">
+            <div class="white-card comm-chart-card"><div class="card-head"><h3>Andamento vendite e incassi</h3><select id="commChartRange"><option>Mensile</option><option>Settimanale</option><option>Annuale</option></select></div><canvas id="commSalesChart"></canvas></div>
+            <div class="white-card"><div class="card-head"><h3>Riepilogo di oggi</h3><button class="link-btn" data-comm-tab="comm-vendite">aggiorna</button></div><div id="commTodaySummary" class="summary-stack"></div></div>
+          </div>
+          <div class="grid-3">
+            <div class="white-card"><div class="card-head"><h3>Scadenze urgenti</h3><button class="link-btn" data-comm-tab="comm-scadenze">vedi</button></div><div id="commUrgentDeadlines" class="flat-list compact"></div></div>
+            <div class="white-card"><div class="card-head"><h3>Clienti con problemi</h3><button class="link-btn" data-comm-tab="comm-clienti">apri</button></div><div id="commProblemClients" class="flat-list compact"></div></div>
+            <div class="white-card"><div class="card-head"><h3>Ultime attività</h3><button class="link-btn" data-comm-tab="comm-report">log</button></div><div id="commActivityList" class="timeline-list compact"></div></div>
+          </div>
+          <div class="grid-2">
+            <div class="white-card"><div class="card-head"><h3>Comunicazioni recenti</h3><button class="link-btn" data-comm-tab="comm-comms">nuovo messaggio</button></div><div id="commHomeList" class="flat-list"></div></div>
+            <div class="white-card"><div class="card-head"><h3>Stato backup</h3><button class="link-btn" data-comm-tab="comm-backup">backup</button></div><div id="commBackupStatus" class="backup-status-grid"></div></div>
+          </div>
+        </div>
+
+        <div id="comm-clienti" class="comm-tab">
+          <div class="white-card">
+            <div class="card-head"><div><h3>Clienti Commercialista</h3><p class="muted">Tabella professionale con filtri rapidi, alert e azioni.</p></div><button class="btn orange" data-comm-tab="comm-ditta">+ Nuovo cliente</button></div>
+            <div class="filter-bar"><input id="commClientSearch" placeholder="Cerca azienda, cliente, email, P.IVA, CF, Shopify ID..." /><select id="commClientStatusFilter"><option value="">Tutti gli stati</option><option>Attivo</option><option>Sospeso</option><option>Scaduto</option></select><select id="commPlanFilter"><option value="">Tutti i piani</option><option>Normal</option><option>Plus</option><option>Premium</option><option>Custom</option></select></div>
+            <div id="commClientTable" class="table-wrap comm-table-wrap"></div>
+          </div>
+          <div id="commClientProfilePanel" class="white-card hidden"></div>
+        </div>
+
+        <div id="comm-ditta" class="comm-tab">
+          <div class="white-card comm-wizard-card">
+            <div class="card-head sticky-head"><div><h3>Nuovo cliente / nuova ditta</h3><p class="muted">Wizard interno: dati cliente, azienda, Shopify, piano, assegnazione, servizi e conferma.</p></div><span class="chip blue">Onboarding</span></div>
+            <form id="companyForm" class="comm-wizard-form">
+              <div class="comm-wizard-shell">
+                <nav class="comm-step-nav">
+                  <button type="button" class="active" data-comm-step="comm-step-client"><span>1</span>Dati cliente</button>
+                  <button type="button" data-comm-step="comm-step-business"><span>2</span>Dati azienda</button>
+                  <button type="button" data-comm-step="comm-step-shopify"><span>3</span>Shopify</button>
+                  <button type="button" data-comm-step="comm-step-plan"><span>4</span>Piano</button>
+                  <button type="button" data-comm-step="comm-step-assign"><span>5</span>Assegnazione</button>
+                  <button type="button" data-comm-step="comm-step-services"><span>6</span>Servizi</button>
+                  <button type="button" data-comm-step="comm-step-confirm"><span>7</span>Conferma</button>
+                </nav>
+                <div class="comm-step-main">
+                  <section id="comm-step-client" class="comm-step-panel active"><h3>Dati cliente</h3><div class="form-grid cols-3"><label class="required-star">Nome cliente <input id="coCustomerFirst" required /></label><label class="required-star">Cognome cliente <input id="coCustomerLast" required /></label><label class="required-star">Email <input id="coEmail" type="email" required /></label><label class="required-star">Telefono <input id="coPhone" required /></label><label>Codice fiscale cliente <input id="coCustomerCf" maxlength="16" /></label><label>Indirizzo <input id="coCustomerAddress" /></label><label>Comune <input id="coCity" /></label><label>Provincia <input id="coProvince" maxlength="2" /></label><label>CAP <input id="coCap" /></label><label>Paese <input id="coCountry" value="Italia" /></label><label>WhatsApp <input id="coWhatsapp" /></label><label>Lingua cliente <select id="coLanguage"><option>Italiano</option><option>Bangla</option><option>Inglese</option><option>Urdu/Hindi</option></select></label></div></section>
+                  <section id="comm-step-business" class="comm-step-panel"><h3>Dati azienda</h3><div class="form-grid cols-3"><label class="required-star">Ragione sociale <input id="coName" required /></label><label>Tipo ditta <select id="coType"></select></label><label class="required-star">Partita IVA <input id="coVat" required /></label><label>Codice fiscale azienda <input id="coCf" /></label><label>Codice ATECO <input id="coAteco" /></label><label>Regime fiscale <select id="coRegime"></select></label><label>PEC <input id="coPec" type="email" /></label><label>Codice SDI <input id="coSdi" /></label><label>Camera di Commercio <input id="coCciaa" /></label><label>REA <input id="coRea" /></label><label>Data apertura <input id="coStartDate" type="date" /></label><label>Sede legale <input id="coAddress" /></label><label>INPS <input id="coInps" /></label><label>INAIL <input id="coInail" /></label><label>IBAN <input id="coIban" /></label><label>Legale rappresentante <input id="coOwner" /></label><label>Firma digitale <select id="coFirmaStatus"><option>Non configurata</option><option>Attiva</option><option>In scadenza</option><option>Scaduta</option></select></label><label>Scadenza firma digitale <input id="coFirmaDeadline" type="date" /></label></div></section>
+                  <section id="comm-step-shopify" class="comm-step-panel"><h3>Collegamento Shopify</h3><div class="form-grid cols-3"><label>Shopify customer ID <input id="coShopifyId" placeholder="gid://shopify/Customer/..." /></label><label>Email Shopify <input id="coShopifyEmail" type="email" /></label><label>Stato collegamento <select id="coShopifyStatus"><option>Da collegare</option><option>Collegato</option><option>Da creare</option><option>Errore sync</option></select></label><label>Tag Shopify <input id="coShopifyTag" value="commercialista" /></label><label>Ultimo sync dashboard <input id="coLastSync" type="date" /></label><label>Versione dati cliente <input id="coVersion" type="number" value="1" /></label></div><div class="cgn-tip">In produzione il collegamento definitivo userà Shopify Customer ID, non email come chiave permanente.</div></section>
+                  <section id="comm-step-plan" class="comm-step-panel"><h3>Piano e pagamento</h3><div class="form-grid cols-3"><label>Piano <select id="coPlan"><option>Normal</option><option>Plus</option><option>Premium</option><option>Custom</option></select></label><label>Prezzo piano <input id="coPlanPrice" type="number" step="0.01" value="700" /></label><label>Frequenza <select id="coBilling"><option>Annuale</option><option>Mensile</option><option>Trimestrale</option><option>Semestrale</option></select></label><label>Data inizio <input id="coStartPlan" type="date" /></label><label>Rinnovo <input id="coDeadline" type="date" /></label><label>Pagato <input id="coPaid" type="number" step="0.01" value="0" /></label><label>Residuo <input id="coRemaining" type="number" step="0.01" /></label><label>Metodo pagamento <select id="coPayMethod"><option>Contanti</option><option>Carta/POS</option><option>Bonifico</option><option>Shopify</option><option>Altro</option></select></label><label>Stato pagamento <select id="coPayStatus"><option>Da pagare</option><option>Parziale</option><option>Pagato</option><option>Scaduto</option></select></label></div></section>
+                  <section id="comm-step-assign" class="comm-step-panel"><h3>Assegnazione interna</h3><div class="form-grid cols-3"><label>Commercialista assegnato <input id="coAssignedCommercialista" value="Studio Commercialista" /></label><label>Operatore assegnato <input id="coAssignedOperator" /></label><label>Team interno <select id="coInternalTeam"><option>Commercialista</option><option>Team Italy</option><option>Team Bangla</option><option>Admin</option></select></label><label>Priorità <select id="coPriority"><option>Normale</option><option>Alta</option><option>Urgente</option></select></label><label>Stato cliente <select id="coStatus"><option>Attivo</option><option>In onboarding</option><option>Sospeso</option><option>Scaduto</option></select></label><label>Prossima scadenza <input id="coNextWork" type="date" /></label><label class="form-span">Note interne <textarea id="coInternalNotes"></textarea></label></div></section>
+                  <section id="comm-step-services" class="comm-step-panel"><h3>Servizi inclusi</h3><div id="coServicesBox" class="service-toggle-grid"></div><label class="upload-box form-span">Upload documenti iniziali <input id="coDocs" type="file" multiple /><span id="coDocsPreview">Nessun file</span></label></section>
+                  <section id="comm-step-confirm" class="comm-step-panel"><h3>Conferma creazione</h3><div id="commCreatePreview" class="document-preview"></div><div class="status-banner">Alla creazione verranno preparati profilo azienda, piano, dashboard summary, audit iniziale e collegamento Shopify da sincronizzare.</div></section>
+                </div>
+              </div>
+              <div class="form-wizard-actions"><button type="button" class="btn light" data-comm-prev>Indietro</button><button type="button" class="btn blue" data-comm-next>Avanti</button><button class="btn orange" type="submit"><i class="fa-solid fa-circle-check"></i> Salva cliente / ditta</button></div>
+            </form>
+          </div>
+        </div>
+
+        <div id="comm-vendite" class="comm-tab"><div class="grid-2"><div class="white-card"><div class="card-head"><h3>Vendite giornaliere / chiusura</h3><span class="chip green">calcolo automatico</span></div><form id="commSalesForm" class="form-grid cols-2"><label>Cliente / ditta <select id="saleCompany"></select></label><label>Data <input id="saleDate" type="date" /></label><label>Vendite POS / carta <input id="saleCard" type="number" step="0.01" /></label><label>Vendite contanti <input id="saleCash" type="number" step="0.01" /></label><label>Altri incassi <input id="saleOther" type="number" step="0.01" /></label><label>Totale Agenzia Entrate <input id="saleAgencyTotal" type="number" step="0.01" /></label><label>Numero chiusura <input id="saleClosureNo" /></label><label>Firma digitale verificata <select id="saleFirma"><option>No</option><option>Sì</option></select></label><label>Stato chiusura <select id="saleStatus"><option>Bozza</option><option>Completata</option><option>Differenza rilevata</option><option>In verifica</option></select></label><label class="form-span">Note / motivazione differenza <textarea id="saleNote"></textarea></label><label class="upload-box form-span">Allegato chiusura <input id="saleFile" type="file" /><span>PDF/foto chiusura</span></label><button class="btn orange form-span">Salva vendite / chiusura</button></form></div><div class="white-card"><h3>Registro vendite</h3><div id="commSalesList" class="flat-list"></div></div></div></div>
+        <div id="comm-pratiche" class="comm-tab"><div class="white-card"><div class="card-head"><h3>Pratiche aziende</h3><button class="btn light" data-comm-tab="comm-ditta">+ nuova pratica cliente</button></div><div id="commCompanyTable" class="table-wrap"></div></div></div>
+        <div id="comm-fattura" class="comm-tab"><div class="grid-2"><div class="white-card"><h3>Nuova fattura / aggiornamento</h3><form id="invoiceForm" class="form-grid cols-2"><label>Ditta <select id="invCompany"></select></label><label>Tipo <select id="invType"></select></label><label>Cliente / fornitore <input id="invClient" /></label><label>Descrizione <input id="invDesc" /></label><label>Imponibile <input id="invNet" type="number" step="0.01" /></label><label>IVA % <input id="invVatRate" type="number" value="22" /></label><label>Scadenza <input id="invDue" type="date" /></label><label>Stato <select id="invStatus"><option>Bozza</option><option>Inviata</option><option>Pagata</option><option>Scaduta</option></select></label><label>PDF/XML link <input id="invFileLink" /></label><label>Comunicazione cliente <input id="invMessage" /></label><button class="btn orange form-span" type="submit">Salva fattura / comunicazione</button></form></div><div class="white-card"><h3>Fatture recenti</h3><div id="commInvoiceList" class="flat-list"></div></div></div></div>
+        <div id="comm-f24" class="comm-tab"><div class="grid-2"><div class="white-card"><h3>Nuovo F24 / contributo</h3><form id="commF24Form" class="form-grid cols-2"><label>Ditta <select id="f24Company"></select></label><label>Tipo imposta <select id="f24Type"><option>IVA</option><option>INPS</option><option>IRPEF</option><option>IRAP</option><option>Camera di Commercio</option><option>Altro</option></select></label><label>Periodo <input id="f24Period" placeholder="es. 06/2026" /></label><label>Importo <input id="f24Amount" type="number" step="0.01" /></label><label>Scadenza <input id="f24Due" type="date" /></label><label>Stato pagamento <select id="f24Status"><option>Da pagare</option><option>Pagato</option><option>Scaduto</option></select></label><label>Ricevuta link <input id="f24Receipt" /></label><label class="form-span">Note <textarea id="f24Note"></textarea></label><button class="btn orange form-span">Salva F24</button></form></div><div class="white-card"><h3>F24 e contributi</h3><div id="commF24List" class="flat-list"></div></div></div></div>
+        <div id="comm-dipendenti" class="comm-tab"><div class="grid-2"><div class="white-card"><h3>Nuovo dipendente</h3><form id="commEmployeeForm" class="form-grid cols-2"><label>Ditta <select id="empCompany"></select></label><label>Nome dipendente <input id="empName" /></label><label>Codice fiscale <input id="empCf" maxlength="16" /></label><label>Contratto <select id="empContract"><option>Tempo determinato</option><option>Tempo indeterminato</option><option>Part-time</option><option>Apprendistato</option><option>Colf/Badante</option></select></label><label>Data assunzione <input id="empStart" type="date" /></label><label>Scadenza contratto <input id="empEnd" type="date" /></label><label>Ultima busta paga <input id="empPayroll" /></label><label>Stato <select id="empStatus"><option>Attivo</option><option>Sospeso</option><option>Cessato</option></select></label><button class="btn orange form-span">Salva dipendente</button></form></div><div class="white-card"><h3>Dipendenti / payroll</h3><div id="commEmployeesList" class="flat-list"></div></div></div></div>
+        <div id="comm-documenti" class="comm-tab"><div class="grid-2"><div class="white-card"><h3>Upload documenti cliente</h3><form id="commDocumentForm" class="form-grid cols-2"><label>Ditta <select id="docCompany"></select></label><label>Categoria <select id="docCategory"><option>Identity</option><option>Tax</option><option>Invoice</option><option>F24</option><option>Payroll</option><option>Contract</option><option>Camera di Commercio</option><option>Digital signature</option><option>Receipt</option><option>Other</option></select></label><label>Visibile al cliente <select id="docVisible"><option>Sì</option><option>No</option></select></label><label>Scadenza documento <input id="docExpiry" type="date" /></label><label class="form-span">Descrizione <textarea id="docDesc"></textarea></label><label class="upload-box form-span">Seleziona file <input id="docFile" type="file" multiple /><span id="docFilePreview">Nessun file</span></label><button class="btn orange form-span">Salva documento</button></form></div><div class="white-card"><h3>Documenti recenti</h3><div id="commDocsList" class="flat-list"></div></div></div></div>
+        <div id="comm-comms" class="comm-tab"><div class="grid-2"><div class="white-card"><h3>Nuova comunicazione</h3><form id="commMessageForm" class="form-grid cols-2"><label>Ditta <select id="msgCompany"></select></label><label>Tipo <select id="msgType"><option>Richiesta documenti</option><option>Aggiornamento cliente</option><option>Sollecito pagamento</option><option>Scadenza fiscale</option><option>Firma digitale</option><option>Altro</option></select></label><label>Priorità <select id="msgPriority"><option>Normale</option><option>Urgente</option></select></label><label>Canale <select id="msgChannel"><option>Dashboard cliente</option><option>Email</option><option>Dashboard + Email</option></select></label><label class="form-span">Oggetto <input id="msgSubject" /></label><label class="form-span">Messaggio <textarea id="msgBody"></textarea></label><button class="btn orange form-span">Invia / salva comunicazione</button></form></div><div class="white-card"><h3>Comunicazioni cliente / team</h3><div id="commCommsList" class="flat-list"></div></div></div></div>
+        <div id="comm-scadenze" class="comm-tab"><div class="grid-2"><div class="white-card"><h3>Nuova scadenza</h3><form id="commDeadlineForm" class="form-grid cols-2"><label>Ditta <select id="deadCompany"></select></label><label>Tipo scadenza <select id="deadType"><option>F24</option><option>IVA</option><option>INPS</option><option>Camera di Commercio</option><option>Payroll</option><option>Rinnovo piano</option><option>Firma digitale</option><option>Altro</option></select></label><label>Data scadenza <input id="deadDate" type="date" /></label><label>Priorità <select id="deadPriority"><option>Normale</option><option>Alta</option><option>Urgente</option></select></label><label class="form-span">Descrizione <textarea id="deadDesc"></textarea></label><button class="btn orange form-span">Salva scadenza</button></form></div><div class="white-card"><h3>Scadenze e adempimenti</h3><div id="commDeadlineList" class="flat-list"></div></div></div></div>
+        <div id="comm-piani" class="comm-tab"><div class="grid-2"><div class="white-card"><h3>Piani clienti</h3><div id="commPlansList" class="flat-list"></div></div><div class="white-card"><h3>Pagamenti e insoluti</h3><div id="commPaymentsList" class="flat-list"></div></div></div></div>
+        <div id="comm-report" class="comm-tab"><div class="grid-2"><div class="white-card"><h3>Report Commercialista</h3><div id="commReportBox" class="document-preview"></div></div><div class="white-card"><h3>Audit attività</h3><div id="commAuditList" class="timeline-list"></div></div></div></div>
+        <div id="comm-backup" class="comm-tab"><div class="grid-2"><div class="white-card"><h3>Crea backup</h3><form id="commBackupForm" class="form-grid cols-2"><label>Tipo backup <select id="backupType"><option>Cliente selezionato</option><option>Giornaliero</option><option>Mensile</option><option>Annuale</option><option>Completo</option></select></label><label>Ditta <select id="backupCompany"></select></label><label>Destinazione <select id="backupDest"><option>Cloudflare R2</option><option>Google Drive</option><option>R2 + Google Drive</option></select></label><label>Note <input id="backupNote" /></label><button class="btn orange form-span">Avvia backup</button></form></div><div class="white-card"><h3>Storico backup</h3><div id="commBackupList" class="flat-list"></div></div></div></div>
+        <div id="comm-bio" class="comm-tab"><div class="white-card"><div class="card-head"><h3>Bio data aziende</h3><button class="btn light" data-comm-tab="comm-clienti">apri clienti</button></div><div id="commBioList" class="client-grid"></div></div></div>
+        <div id="comm-ticket" class="comm-tab"><div class="grid-2"><div class="white-card"><h3>Nuovo ticket commercialista</h3><form id="commTicketForm" class="form-grid cols-2"><label>Oggetto <input id="commTicketSubject" required></label><label>Azienda/Pratica <input id="commTicketPratica"></label><label>Priorità <select id="commTicketPriority"><option>Normale</option><option>Urgente</option></select></label><label>Categoria <select id="commTicketCat"><option>Problema cliente</option><option>Fattura</option><option>Pagamento</option><option>Shopify sync</option><option>Backup</option><option>Altro</option></select></label><label class="form-span">Messaggio <textarea id="commTicketMessage" required></textarea></label><button class="btn orange form-span">Invia ticket</button></form></div><div class="white-card"><h3>Ticket</h3><div id="commTicketList" class="flat-list"></div></div></div></div>
+      </main>
+    </section>
+
+    <!-- TEAM BANGLA DASHBOARD -->
+    <section id="dashboard-bangla" class="role-dashboard hidden simple-dashboard">
+      <aside class="cgn-sidebar"><button data-bangla-tab="bangla-home" class="active">Dashboard Bangla</button><button data-bangla-tab="bangla-new">Crea ordine</button><button data-bangla-tab="bangla-inbox">Inbox agent/commercialista</button><button data-bangla-tab="bangla-missing">Richieste mancanti</button><button data-bangla-tab="bangla-send-italy">Invio a Italy</button><button data-bangla-tab="bangla-profile">Profilo & Salary</button><button data-bangla-tab="bangla-research">Fonti / News</button><button data-bangla-tab="bangla-ticket">Ticket</button></aside>
+      <main class="cgn-main"><div class="cgn-actionbar"><b>Team Bangla</b><span>Primo controllo documenti e raccolta dati</span></div>
+        <div id="bangla-home" class="bangla-tab active"><div class="kpi-row"><div class="kpi white"><span>Nuove pratiche</span><strong id="banglaNewCount">0</strong></div><div class="kpi white"><span>Docs missing</span><strong id="banglaMissingCount">0</strong></div><div class="kpi white"><span>Pronte Italy</span><strong id="banglaReadyCount">0</strong></div></div><div class="white-card"><h3>Inbox lavoro</h3><div id="banglaInboxList" class="flat-list"></div></div></div>
+        <div id="bangla-new" class="bangla-tab"><div class="split-workspace"><div class="white-card"><div class="card-head"><h3>Crea ordine / pratica manuale</h3><span class="chip green">Team Bangla intake</span></div><form id="banglaOrderForm" class="form-grid cols-3"><label>Servizio <select id="bnServiceSelect"></select></label><label>Source ordine <select id="bnSource"><option>Shopify</option><option>Manuale</option><option>Agent</option><option>Commercialista</option><option>Telefono/WhatsApp</option></select></label><label>Order Shopify / riferimento <input id="bnShopifyOrder" placeholder="#1001 / link ordine" /></label><label>Codice fiscale <input id="bnCf" maxlength="16" /></label><label>Cognome <input id="bnLastName" required /></label><label>Nome <input id="bnFirstName" required /></label><label>Email <input id="bnEmail" type="email" /></label><label>Telefono <input id="bnPhone" /></label><label>Indirizzo <input id="bnAddress" /></label><label>Importo pagato / da pagare <input id="bnAmount" type="number" step="0.01" /></label><label>Pagamento <select id="bnPayment"><option>In attesa pagamento</option><option>Pagato</option><option>Parziale</option><option>Rimborso richiesto</option></select></label><label>Scadenza <input id="bnDeadline" type="date" /></label><label class="form-span">Note interne <textarea id="bnNote"></textarea></label><div class="form-span"><div class="form-section blue-title">Checklist documenti</div><div id="bnDocChecklist" class="doc-checklist"></div></div><label class="upload-box form-span">Upload documenti cliente <input id="bnDocUpload" type="file" multiple /><span id="bnUploadPreview">Nessun file</span></label><div class="delegation-box form-span"><label class="checkbox-row"><input id="bnDelega" type="checkbox" /> Delega/mandato cliente ricevuto</label><label class="checkbox-row"><input id="bnPrivacy" type="checkbox" /> Privacy/consenso ricevuto</label></div><div class="signature-box form-span"><div class="signature-head"><b>Firma cliente / ricezione ordine</b><span>firma se presente in sede/WhatsApp</span></div><canvas id="banglaSignaturePad" width="720" height="150"></canvas><div class="sig-actions"><button type="button" class="btn light" id="clearBanglaSignatureBtn">Cancella firma</button><span id="banglaSignatureState">Non firmato</span></div></div><button class="btn orange form-span">Crea pratica e metti in controllo Bangla</button></form></div><div class="white-card preview-card"><h3>Anteprima ordine Bangla</h3><div id="banglaOrderPreview" class="document-preview"></div></div></div></div>
+        <div id="bangla-inbox" class="bangla-tab"><div class="white-card"><h3>Pratiche da controllare</h3><div id="banglaInboxTable" class="table-wrap"></div></div></div>
+        <div id="bangla-missing" class="bangla-tab"><div class="white-card"><h3>Invia richiesta documenti/dati mancanti</h3><div id="banglaMissingPanel" class="flat-list"></div></div></div>
+        <div id="bangla-send-italy" class="bangla-tab"><div class="white-card"><h3>Pronte per Team Italy</h3><div id="banglaReadyPanel" class="flat-list"></div></div></div><div id="bangla-profile" class="bangla-tab"><div class="grid-2"><div class="white-card"><h3>Profilo team</h3><div id="banglaProfileBox" class="document-preview"></div></div><div class="white-card"><h3>Daily work submit</h3><form id="banglaDailyForm" class="form-grid cols-2"><label>Pratiche completate oggi <input id="banglaDailyDone" type="number"></label><label>Problemi aperti <input id="banglaDailyIssues" type="number"></label><label class="form-span">Note lavoro <textarea id="banglaDailyNote"></textarea></label><button class="btn orange form-span">Salva report giornaliero</button></form></div></div></div><div id="bangla-research" class="bangla-tab"><div class="grid-2"><div class="white-card"><h3>Aggiungi fonte/news ufficiale</h3><form id="banglaSourceForm" class="form-grid cols-2"><label>Titolo <input id="banglaSourceTitle"></label><label>Link <input id="banglaSourceUrl"></label><label>Categoria <input id="banglaSourceCat"></label><button class="btn orange form-span">Salva fonte</button></form></div><div class="white-card"><h3>Fonti condivise</h3><div id="banglaSourcesList" class="flat-list"></div></div></div></div><div id="bangla-ticket" class="bangla-tab"><div class="grid-2"><div class="white-card"><h3>Nuovo ticket team</h3><form id="banglaTicketForm" class="form-grid cols-2"><label>Oggetto <input id="banglaTicketSubject" required></label><label>Pratica <input id="banglaTicketPratica"></label><label class="form-span">Messaggio <textarea id="banglaTicketMessage" required></textarea></label><button class="btn orange form-span">Invia ticket ad admin</button></form></div><div class="white-card"><h3>Ticket team</h3><div id="banglaTicketList" class="flat-list"></div></div></div></div>
+      </main>
+    </section>
+
+    <!-- TEAM ITALY DASHBOARD -->
+    <section id="dashboard-italy" class="role-dashboard hidden simple-dashboard">
+      <aside class="cgn-sidebar"><button data-italy-tab="italy-home" class="active">Dashboard Italy</button><button data-italy-tab="italy-all">Pratiche assegnate</button><button data-italy-tab="italy-730">730 review</button><button data-italy-tab="italy-complete">Da completare</button><button data-italy-tab="italy-profile">Profilo & Salary</button><button data-italy-tab="italy-research">Fonti</button><button data-italy-tab="italy-ticket">Ticket</button></aside>
+      <main class="cgn-main"><div class="cgn-actionbar"><b>Team Italy</b><span>Verifica ufficiale e completamento pratiche</span></div>
+        <div id="italy-home" class="italy-tab active"><div class="kpi-row"><div class="kpi white"><span>Assegnate</span><strong id="italyAssignedCount">0</strong></div><div class="kpi white"><span>730 review</span><strong id="italy730Count">0</strong></div><div class="kpi white"><span>Completate</span><strong id="italyCompletedCount">0</strong></div></div><div class="white-card"><h3>Pratiche Italy</h3><div id="italyWorkList" class="flat-list"></div></div></div>
+        <div id="italy-all" class="italy-tab"><div class="white-card"><h3>Lista assegnate</h3><div id="italyAllTable" class="table-wrap"></div></div></div>
+        <div id="italy-730" class="italy-tab"><div class="white-card"><h3>730 da verificare</h3><div id="italy730List" class="flat-list"></div></div></div>
+        <div id="italy-complete" class="italy-tab"><div class="white-card"><h3>Completa / richiedi integrazione / carica ricevuta</h3><div class="info-blue">Quando completi una pratica, puoi inserire link ricevuta/PDF o nota. Bangla, agent e admin lo vedranno nel dettaglio pratica.</div><div id="italyCompleteList" class="flat-list"></div></div></div><div id="italy-profile" class="italy-tab"><div class="white-card"><h3>Profilo Italy & performance</h3><div id="italyProfileBox" class="document-preview"></div></div></div><div id="italy-research" class="italy-tab"><div class="white-card"><h3>Fonti ufficiali</h3><div id="italySourcesList" class="flat-list"></div></div></div><div id="italy-ticket" class="italy-tab"><div class="grid-2"><div class="white-card"><h3>Nuovo ticket Team Italy</h3><form id="italyTicketForm" class="form-grid cols-2"><label>Oggetto <input id="italyTicketSubject" required></label><label>Pratica <input id="italyTicketPratica"></label><label class="form-span">Messaggio <textarea id="italyTicketMessage" required></textarea></label><button class="btn orange form-span">Invia ticket</button></form></div><div class="white-card"><h3>Ticket Italy</h3><div id="italyTicketList" class="flat-list"></div></div></div></div>
+      </main>
+    </section>
+
+    <!-- ADMIN DASHBOARD -->
+    <section id="dashboard-admin" class="role-dashboard hidden simple-dashboard">
+      <aside class="cgn-sidebar"><button data-admin-tab="admin-home" class="active">Admin home</button><button data-admin-tab="admin-users">Users</button><button data-admin-tab="admin-credit">Agent credit</button><button data-admin-tab="admin-pratiche">All pratiche</button><button data-admin-tab="admin-salary">Team salary</button><button data-admin-tab="admin-commission">Commissioni</button><button data-admin-tab="admin-tickets">Tickets</button><button data-admin-tab="admin-docs">Documenti</button><button data-admin-tab="admin-sources">Fonti</button></aside>
+      <main class="cgn-main"><div class="cgn-actionbar"><b>Admin Control</b><span>All transactions, users, credit, salaries and commissions</span></div>
+        <div id="admin-home" class="admin-tab active"><div class="kpi-row"><div class="kpi white"><span>Tutte pratiche</span><strong id="adminAllCount">0</strong></div><div class="kpi white"><span>Credito agents</span><strong id="adminCreditTotal">€0,00</strong></div><div class="kpi white"><span>Commissioni pending</span><strong id="adminCommissionPending">€0,00</strong></div><div class="kpi white"><span>Team salary mese</span><strong id="adminSalaryMonth">€0,00</strong></div></div><div class="white-card"><h3>All transaction timeline</h3><div id="adminTimeline" class="timeline-list"></div></div></div>
+        <div id="admin-users" class="admin-tab"><div class="grid-2"><div class="white-card"><h3>Crea user</h3><form id="adminUserForm" class="form-grid cols-2"><label>Nome <input id="adName" required /></label><label>Email <input id="adEmail" type="email" required /></label><label>Username <input id="adUsername" required /></label><label>Password iniziale <input id="adPassword" type="password" placeholder="Imposta password" autocomplete="new-password" required /></label><label>Ruolo <select id="adRole"><option value="agent">Agent</option><option value="commercialista">Commercialista</option><option value="bangla">Team Bangla</option><option value="italy">Team Italy</option><option value="admin">Admin</option></select></label><label>Credito iniziale <input id="adCredit" type="number" value="0" /></label><button class="btn orange form-span">Crea user</button></form></div><div class="white-card"><h3>Users</h3><div id="adminUsersList" class="flat-list"></div></div></div></div>
+        <div id="admin-credit" class="admin-tab"><div class="white-card"><h3>Richieste credito agenti</h3><div id="adminCreditRequests" class="flat-list"></div></div></div>
+        <div id="admin-pratiche" class="admin-tab"><div class="white-card"><h3>Tutte le pratiche</h3><div id="adminPraticheTable" class="table-wrap"></div></div></div>
+        <div id="admin-salary" class="admin-tab"><div class="white-card"><h3>Team salary</h3><div id="adminSalaryList" class="flat-list"></div></div></div>
+        <div id="admin-commission" class="admin-tab"><div class="white-card"><h3>Commissioni agenti</h3><div id="adminCommissionList" class="flat-list"></div></div></div><div id="admin-tickets" class="admin-tab"><div class="white-card"><h3>Tutti i ticket</h3><div id="adminTicketList" class="flat-list"></div></div></div><div id="admin-docs" class="admin-tab"><div class="white-card"><h3>Download documenti pratiche</h3><div id="adminDocsList" class="flat-list"></div></div></div><div id="admin-sources" class="admin-tab"><div class="white-card"><h3>Fonti ufficiali condivise</h3><div id="adminSourcesList" class="flat-list"></div></div></div>
+      </main>
+    </section>
+  </div>
+
+  <div id="detailModal" class="modal hidden"><div class="modal-card"><button class="modal-close" id="closeDetailModal">×</button><div id="detailModalBody"></div></div></div>
+</body>
+</html>

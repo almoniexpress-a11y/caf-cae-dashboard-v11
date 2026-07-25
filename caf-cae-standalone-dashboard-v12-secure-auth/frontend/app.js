@@ -14,11 +14,11 @@
     signatureDataUrl: '',
     chartRefs: {},
     users: [
-      { id: 'u-admin', username: 'admin', password: 'Firenze2026@', role: 'admin', name: 'Imran Mollah', email: 'almoniexpress@gmail.com', phone: '+39 353 375 5988', office: 'Ufficio Admin', credit: 0, salary: 0, active: true },
-      { id: 'u-agent', username: 'agent', password: 'Firenze2026@', role: 'agent', name: 'Usman Ali', email: 'agent@cafcae.it', phone: '+39 353 111 222', office: 'Agente Prato', credit: 250, salary: 0, active: true },
-      { id: 'u-comm', username: 'commercialista', password: 'Firenze2026@', role: 'commercialista', name: 'Studio Commercialista', email: 'commercialista@cafcae.it', phone: '+39 353 222 333', office: 'Area Commercialista', credit: 0, salary: 0, active: true },
-      { id: 'u-bangla', username: 'bangla', password: 'Firenze2026@', role: 'bangla', name: 'Team Bangla', email: 'bangla@cafcae.it', phone: '+39 353 333 444', office: 'Team Bangla', credit: 0, salary: 1450, active: true },
-      { id: 'u-italy', username: 'italy', password: 'Firenze2026@', role: 'italy', name: 'Team Italy', email: 'italy@cafcae.it', phone: '+39 353 444 555', office: 'Team Italy', credit: 0, salary: 1850, active: true }
+      { id: 'u-admin', username: 'admin', role: 'admin', name: 'Imran Mollah', email: 'almoniexpress@gmail.com', phone: '+39 353 375 5988', office: 'Ufficio Admin', credit: 0, salary: 0, active: true },
+      { id: 'u-agent', username: 'agent', role: 'agent', name: 'Usman Ali', email: 'agent@cafcae.it', phone: '+39 353 111 222', office: 'Agente Prato', credit: 250, salary: 0, active: true },
+      { id: 'u-comm', username: 'commercialista', role: 'commercialista', name: 'Studio Commercialista', email: 'commercialista@cafcae.it', phone: '+39 353 222 333', office: 'Area Commercialista', credit: 0, salary: 0, active: true },
+      { id: 'u-bangla', username: 'bangla', role: 'bangla', name: 'Team Bangla', email: 'bangla@cafcae.it', phone: '+39 353 333 444', office: 'Team Bangla', credit: 0, salary: 1450, active: true },
+      { id: 'u-italy', username: 'italy', role: 'italy', name: 'Team Italy', email: 'italy@cafcae.it', phone: '+39 353 444 555', office: 'Team Italy', credit: 0, salary: 1850, active: true }
     ],
     pratiche: [],
     wallet: [],
@@ -39,13 +39,37 @@
     editingPraticaId: null
   };
 
+
+  function sanitizeUsers() {
+    STATE.users = (STATE.users || []).map(u => {
+      const { password, password_hash, reset_token, ...safeUser } = u || {};
+      return safeUser;
+    });
+  }
+
+  async function loadUsersFromBackend() {
+    if (!window.CAF_CAE_API?.enabled?.() || STATE.session?.role !== 'admin') return;
+    try {
+      const data = await window.CAF_CAE_API.listUsers();
+      if (data?.ok && Array.isArray(data.users)) {
+        STATE.users = data.users.map(u => {
+          const { password, password_hash, ...safeUser } = u;
+          return safeUser;
+        });
+      }
+    } catch (err) {
+      console.warn('User list not loaded', err);
+    }
+  }
+
   function seed() {
-    const saved = localStorage.getItem('caf_cae_v11_state') || localStorage.getItem('caf_cae_v8_state');
+    const saved = localStorage.getItem('caf_cae_v12_state') || localStorage.getItem('caf_cae_v11_state');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         Object.assign(STATE, parsed);
         STATE.signatureDataUrl = '';
+        sanitizeUsers();
         return;
       } catch (_) {}
     }
@@ -79,6 +103,7 @@
     STATE.communications = [{ id: 'c1', target: 'commercialista', title: 'Nuova fattura caricata', message: 'Fattura inviata per Almoni Express', date: today() }];
     STATE.researchLinks = CATALOG.sourceLinks || [];
     STATE.tickets = [{ id:'t1', creatorRole:'agent', creatorEmail:'agent@cafcae.it', subject:'Errore documento 730', praticaCode:'CAF-730-2026-0001', message:'Cliente deve reinviare CU seconda pagina.', status:'Open', progress:'In analisi admin', date: today() }];
+    sanitizeUsers();
     saveState();
   }
 
@@ -118,9 +143,10 @@
   }
 
   function saveState() {
+    sanitizeUsers();
     const copy = { ...STATE, session: null, signatureDataUrl: '', signature730DataUrl: '', banglaSignatureDataUrl: '', chartRefs: {} };
+    localStorage.setItem('caf_cae_v12_state', JSON.stringify(copy));
     localStorage.setItem('caf_cae_v11_state', JSON.stringify(copy));
-    localStorage.setItem('caf_cae_v8_state', JSON.stringify(copy));
     if (window.CAF_CAE_API?.enabled?.() && STATE.session) {
       window.CAF_CAE_API.pushSnapshot(STATE, STATE.session).catch(() => showToast('Offline backend: salvato localmente.', 'warning'));
     }
@@ -134,11 +160,12 @@
         const currentSession = STATE.session;
         Object.assign(STATE, remote.state);
         STATE.session = currentSession;
+        sanitizeUsers();
         STATE.signatureDataUrl = '';
         STATE.signature730DataUrl = '';
         STATE.banglaSignatureDataUrl = '';
         normalizePratiche();
-        localStorage.setItem('caf_cae_v11_state', JSON.stringify({ ...STATE, session: null, chartRefs: {} }));
+        localStorage.setItem('caf_cae_v12_state', JSON.stringify({ ...STATE, session: null, chartRefs: {} }));
         setTimeout(() => { renderAll(); showToast(reason === 'login' ? 'Dati live caricati dal backend.' : 'Dashboard aggiornata in tempo reale.'); }, 80);
       }
     } catch (_) {
@@ -155,22 +182,56 @@
     showToast.t = setTimeout(() => el.classList.add('hidden'), 2600);
   }
 
-  function login(username, password) {
-    const u = STATE.users.find(x => x.active && (x.username.toLowerCase() === username.toLowerCase() || x.email.toLowerCase() === username.toLowerCase()) && x.password === password);
-    if (!u) return null;
-    STATE.session = { ...u };
-    localStorage.setItem('caf_cae_v11_session', JSON.stringify({ id: u.id })); localStorage.setItem('caf_cae_v8_session', JSON.stringify({ id: u.id }));
-    return u;
+  async function login(username, password) {
+    if (!window.CAF_CAE_API?.enabled?.()) {
+      showToast('Backend sicuro non configurato. Imposta API_URL in config.js.', 'error');
+      return null;
+    }
+    try {
+      const data = await window.CAF_CAE_API.login(username, password);
+      if (!data?.ok || !data.user) return null;
+      const u = { ...data.user, username: data.user.username || username, active: true };
+      STATE.session = { ...u };
+      localStorage.setItem('caf_cae_v12_session', JSON.stringify({ id: u.id, email: u.email, role: u.role }));
+      localStorage.removeItem('caf_cae_v11_session');
+      localStorage.removeItem('caf_cae_v8_session');
+      await loadUsersFromBackend();
+      return u;
+    } catch (err) {
+      console.warn('secure login failed', err);
+      return null;
+    }
   }
 
-  function restoreSession() {
+  async function restoreSession() {
+    if (!window.CAF_CAE_API?.enabled?.()) return;
     try {
-      const data = JSON.parse(localStorage.getItem('caf_cae_v11_session') || localStorage.getItem('caf_cae_v8_session') || 'null');
-      if (data?.id) {
-        const u = STATE.users.find(x => x.id === data.id && x.active);
-        if (u) STATE.session = { ...u };
+      const data = await window.CAF_CAE_API.me();
+      if (data?.ok && data.user) {
+        STATE.session = { ...data.user, active: true };
+        await loadUsersFromBackend();
       }
-    } catch (_) {}
+    } catch (_) {
+      localStorage.removeItem('caf_cae_v12_session');
+      localStorage.removeItem('caf_cae_v11_session');
+      localStorage.removeItem('caf_cae_v8_session');
+    }
+  }
+
+  async function handleResetTokenFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('reset_token');
+    if (!token || !window.CAF_CAE_API?.enabled?.()) return;
+    const password = prompt('Imposta nuova password CAF CAE (minimo 8 caratteri):');
+    if (!password) return;
+    try {
+      await window.CAF_CAE_API.resetPassword(token, password);
+      params.delete('reset_token');
+      history.replaceState({}, document.title, window.location.pathname + (params.toString() ? `?${params}` : ''));
+      showToast('Password aggiornata. Ora fai login con la nuova password.', 'success');
+    } catch (err) {
+      showToast(err.message || 'Reset password non valido o scaduto.', 'error');
+    }
   }
 
   function setRoleDashboard() {
@@ -862,18 +923,38 @@
     saveState(); renderAll(); showToast('Credito approvato e aggiunto.');
   }
 
-  function submitAdminUser(e) {
+  async function submitAdminUser(e) {
     e.preventDefault();
+    if (STATE.session?.role !== 'admin') return showToast('Solo admin può creare user.', 'error');
     const email = $('#adEmail').value.toLowerCase().trim();
     const username = $('#adUsername').value.trim();
     const password = $('#adPassword').value.trim();
-    if (!password) return showToast('Inserisci una password iniziale per il nuovo user.', 'warning');
+    if (!password || password.length < 8) return showToast('Password minima 8 caratteri.', 'warning');
     if (STATE.users.some(u => u.email === email || u.username === username)) return showToast('Email/username già esistente.', 'error');
-    const u = { id: `u-${Date.now()}`, name: $('#adName').value.trim(), email, username, password, role: $('#adRole').value, phone: '', office: $('#adRole').selectedOptions[0].text, credit: 0, salary: ['bangla', 'italy'].includes($('#adRole').value) ? 1200 : 0, active: true };
-    STATE.users.push(u);
-    const credit = toNum($('#adCredit').value);
-    if (u.role === 'agent' && credit > 0) addWallet(u.email, 'plus', credit, 'Credito iniziale creazione admin');
-    saveState(); e.target.reset(); renderAll(); showToast('User creato con password personalizzata.');
+    const payload = {
+      name: $('#adName').value.trim(),
+      email,
+      username,
+      password,
+      role: $('#adRole').value,
+      office: $('#adRole').selectedOptions[0].text,
+      credit: toNum($('#adCredit').value),
+      salary: ['bangla', 'italy'].includes($('#adRole').value) ? 1200 : 0,
+      active: true
+    };
+    try {
+      const created = await window.CAF_CAE_API?.createUser?.(payload);
+      const u = created?.user || { ...payload, id: `u-${Date.now()}` };
+      delete u.password; delete u.password_hash;
+      STATE.users.push(u);
+      if (u.role === 'agent' && payload.credit > 0) addWallet(u.email, 'plus', payload.credit, 'Credito iniziale creazione admin');
+      saveState();
+      e.target.reset();
+      renderAll();
+      showToast('User creato in backend con password sicura.');
+    } catch (err) {
+      showToast(err.message || 'Errore creazione user backend.', 'error');
+    }
   }
 
   function initSignaturePad() {
@@ -926,8 +1007,39 @@
   }
 
   function bindEvents() {
-    $('#loginForm').addEventListener('submit', e => { e.preventDefault(); const u = login($('#loginUser').value.trim(), $('#loginPass').value); if (!u) { $('#loginError').textContent = 'Credenziali non valide.'; $('#loginError').classList.remove('hidden'); return; } $('#loginError').classList.add('hidden'); setRoleDashboard(); setTimeout(() => pullBackendState('login'), 120); });
-    $('#btnLogout').addEventListener('click', () => { STATE.session = null; localStorage.removeItem('caf_cae_v11_session'); localStorage.removeItem('caf_cae_v8_session'); $('#appShell').classList.add('hidden'); $('#loginOverlay').classList.remove('hidden'); showToast('Logout effettuato.', 'warning'); });
+    $('#loginForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button[type="submit"]');
+      if (btn) { btn.disabled = true; btn.dataset.oldText = btn.innerHTML; btn.innerHTML = 'Accesso sicuro...'; }
+      const u = await login($('#loginUser').value.trim(), $('#loginPass').value);
+      if (btn) { btn.disabled = false; btn.innerHTML = btn.dataset.oldText || 'Entra nel portale'; }
+      if (!u) { $('#loginError').textContent = 'Credenziali non valide o backend non raggiungibile.'; $('#loginError').classList.remove('hidden'); return; }
+      $('#loginError').classList.add('hidden');
+      setRoleDashboard();
+      setTimeout(() => pullBackendState('login'), 120);
+    });
+    $('#btnLogout').addEventListener('click', async () => {
+      try { await window.CAF_CAE_API?.logout?.(); } catch (_) {}
+      STATE.session = null;
+      localStorage.removeItem('caf_cae_v12_session');
+      localStorage.removeItem('caf_cae_v11_session');
+      localStorage.removeItem('caf_cae_v8_session');
+      $('#appShell').classList.add('hidden');
+      $('#loginOverlay').classList.remove('hidden');
+      showToast('Logout effettuato.', 'warning');
+    });
+
+    $('#forgotPasswordBtn')?.addEventListener('click', async () => {
+      const email = prompt('Inserisci email del tuo account CAF CAE:');
+      if (!email) return;
+      try {
+        const data = await window.CAF_CAE_API?.forgotPassword?.(email.trim());
+        if (data?.reset_url) prompt('Link reset temporaneo. Copialo e aprilo:', data.reset_url);
+        showToast('Richiesta reset password registrata. Contatta Admin se non ricevi link.', 'success');
+      } catch (err) {
+        showToast('Non è stato possibile creare reset password.', 'error');
+      }
+    });
     document.body.addEventListener('click', e => {
       const service = e.target.closest('[data-service-key]'); if (service) { selectService(service.dataset.serviceKey); }
       const agentTab = e.target.closest('[data-agent-tab]'); if (agentTab) switchAgentTab(agentTab.dataset.agentTab);
@@ -1331,8 +1443,21 @@
   document.addEventListener('submit',e=>{ if(e.target.id==='commSalesForm') commSubmitSales(e); if(e.target.id==='commF24Form') commSubmitF24(e); if(e.target.id==='commEmployeeForm') commSubmitEmployee(e); if(e.target.id==='commDocumentForm') commSubmitDocument(e); if(e.target.id==='commMessageForm') commSubmitMessage(e); if(e.target.id==='commDeadlineForm') commSubmitDeadline(e); if(e.target.id==='commBackupForm') commSubmitBackup(e); });
   ['input','change'].forEach(ev=>document.addEventListener(ev,e=>{ if(e.target.closest('#companyForm')) commUpdateWizardPreview(); if(e.target.id==='coDocs') commFilePreviewChange('#coDocs','#coDocsPreview'); if(e.target.id==='docFile') commFilePreviewChange('#docFile','#docFilePreview'); if(e.target.id==='commClientSearch'||e.target.id==='commClientStatusFilter'||e.target.id==='commPlanFilter') renderCommClients(); }));
 
-  function boot() {
-    seed(); ensureState(); restoreSession(); bindEvents(); initSignaturePad(); initExtraSignaturePad(); initBanglaSignaturePad(); addCuRow({ income: 6632, days: 180, withheld: 274, regional: 67, trattamento: 979 }); addCuRow({ income: 9510, days: 185, withheld: 274, regional: 68, trattamento: 980 }); addFamilyRow(); selectService('730', false); if (STATE.session) setRoleDashboard();
+  async function boot() {
+    seed();
+    ensureState();
+    sanitizeUsers();
+    await restoreSession();
+    bindEvents();
+    initSignaturePad();
+    initExtraSignaturePad();
+    initBanglaSignaturePad();
+    addCuRow({ income: 6632, days: 180, withheld: 274, regional: 67, trattamento: 979 });
+    addCuRow({ income: 9510, days: 185, withheld: 274, regional: 68, trattamento: 980 });
+    addFamilyRow();
+    selectService('730', false);
+    if (STATE.session) setRoleDashboard();
+    await handleResetTokenFromUrl();
   }
 
   document.addEventListener('DOMContentLoaded', boot);
