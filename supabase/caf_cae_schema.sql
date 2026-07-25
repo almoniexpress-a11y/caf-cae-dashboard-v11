@@ -579,11 +579,6 @@ create index if not exists idx_documents_pratica on documents(pratica_id);
 create index if not exists idx_audit_client on audit_logs(client_id, created_at desc);
 create index if not exists idx_client_versions_client on client_versions(client_id);
 
-insert into dashboard_users (username,email,name,role,password,office,active)
-values
-('admin','almoniexpress@gmail.com','Imran Mollah','admin','123','Admin CAF CAE',true),
-('agent','agent@cafcae.it','Agent Demo','agent','123','Agente CAF CAE',true),
-('commercialista','commercialista@cafcae.it','Studio Commercialista','commercialista','123','Commercialista CAF CAE',true),
-('bangla','bangla@cafcae.it','Team Bangla','bangla','123','Team Bangla',true),
-('italy','italy@cafcae.it','Team Italy','italy','123','Team Italy',true)
-on conflict (username) do nothing;
+-- v12 security: demo plaintext password seed removed.
+-- Create/update users with hashed passwords by running:
+-- supabase/caf_cae_schema_v12_secure_auth.sql

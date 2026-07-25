@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CAF CAE Professional Operations Dashboard v11</title>
+  <title>CAF CAE Secure Operations Dashboard v12</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -20,10 +20,10 @@
   <div id="loginOverlay" class="login-screen">
     <div class="login-panel">
       <div class="login-logo-row">
-        <div class="login-logo"><img src="assets/caf-cae-logo.png" alt="CAF CAE" loading="eager" decoding="async" /></div>
+        <div class="login-logo"><img src="assets/caf-cae-logo.png" alt="CAF CAE" /></div>
         <div>
           <h1>CAF CAE</h1>
-          <p>Professional operations portal · Agent · Team · Commercialista · Admin</p>
+          <p>CAF CAE professional operations portal · Agent · Team · Commercialista · Admin</p>
         </div>
       </div>
       <div id="loginError" class="alert error hidden"></div>
@@ -34,14 +34,18 @@
         <input id="loginPass" type="password" placeholder="Inserisci password" autocomplete="current-password" required />
         <button class="btn orange full" type="submit">Entra nel portale <i class="fa-solid fa-right-to-bracket"></i></button>
       </form>
-</div>
+      <div class="login-help-row">
+        <button id="forgotPasswordBtn" class="link-btn" type="button">Password dimenticata?</button>
+        <small>Accesso sicuro tramite backend CAF CAE</small>
+      </div>
+    </div>
   </div>
 
   <div id="appShell" class="app-shell hidden">
     <header class="cgn-topbar">
       <div class="top-left">
         <button id="mobileMenuBtn" class="icon-btn grid"><i class="fa-solid fa-grip"></i></button>
-        <div class="cgn-logo"><img src="assets/caf-cae-logo.png" alt="CAF CAE" loading="eager" decoding="async" /><span>CAF CAE</span></div>
+        <div class="cgn-logo"><img src="assets/caf-cae-logo.png" alt="CAF CAE" /><span>CAF CAE</span></div>
       </div>
       <div id="topBreadcrumb" class="breadcrumb">Home</div>
       <div class="top-right">
@@ -412,7 +416,7 @@
       <aside class="cgn-sidebar"><button data-admin-tab="admin-home" class="active">Admin home</button><button data-admin-tab="admin-users">Users</button><button data-admin-tab="admin-credit">Agent credit</button><button data-admin-tab="admin-pratiche">All pratiche</button><button data-admin-tab="admin-salary">Team salary</button><button data-admin-tab="admin-commission">Commissioni</button><button data-admin-tab="admin-tickets">Tickets</button><button data-admin-tab="admin-docs">Documenti</button><button data-admin-tab="admin-sources">Fonti</button></aside>
       <main class="cgn-main"><div class="cgn-actionbar"><b>Admin Control</b><span>All transactions, users, credit, salaries and commissions</span></div>
         <div id="admin-home" class="admin-tab active"><div class="kpi-row"><div class="kpi white"><span>Tutte pratiche</span><strong id="adminAllCount">0</strong></div><div class="kpi white"><span>Credito agents</span><strong id="adminCreditTotal">€0,00</strong></div><div class="kpi white"><span>Commissioni pending</span><strong id="adminCommissionPending">€0,00</strong></div><div class="kpi white"><span>Team salary mese</span><strong id="adminSalaryMonth">€0,00</strong></div></div><div class="white-card"><h3>All transaction timeline</h3><div id="adminTimeline" class="timeline-list"></div></div></div>
-        <div id="admin-users" class="admin-tab"><div class="grid-2"><div class="white-card"><h3>Crea user</h3><form id="adminUserForm" class="form-grid cols-2"><label>Nome <input id="adName" required /></label><label>Email <input id="adEmail" type="email" required /></label><label>Username <input id="adUsername" required /></label><label>Password <input id="adPassword" type="password" placeholder="Imposta password" autocomplete="new-password" /></label><label>Ruolo <select id="adRole"><option value="agent">Agent</option><option value="commercialista">Commercialista</option><option value="bangla">Team Bangla</option><option value="italy">Team Italy</option><option value="admin">Admin</option></select></label><label>Credito iniziale <input id="adCredit" type="number" value="0" /></label><button class="btn orange form-span">Crea user</button></form></div><div class="white-card"><h3>Users</h3><div id="adminUsersList" class="flat-list"></div></div></div></div>
+        <div id="admin-users" class="admin-tab"><div class="grid-2"><div class="white-card"><h3>Crea user</h3><form id="adminUserForm" class="form-grid cols-2"><label>Nome <input id="adName" required /></label><label>Email <input id="adEmail" type="email" required /></label><label>Username <input id="adUsername" required /></label><label>Password iniziale <input id="adPassword" type="password" placeholder="Imposta password" autocomplete="new-password" required /></label><label>Ruolo <select id="adRole"><option value="agent">Agent</option><option value="commercialista">Commercialista</option><option value="bangla">Team Bangla</option><option value="italy">Team Italy</option><option value="admin">Admin</option></select></label><label>Credito iniziale <input id="adCredit" type="number" value="0" /></label><button class="btn orange form-span">Crea user</button></form></div><div class="white-card"><h3>Users</h3><div id="adminUsersList" class="flat-list"></div></div></div></div>
         <div id="admin-credit" class="admin-tab"><div class="white-card"><h3>Richieste credito agenti</h3><div id="adminCreditRequests" class="flat-list"></div></div></div>
         <div id="admin-pratiche" class="admin-tab"><div class="white-card"><h3>Tutte le pratiche</h3><div id="adminPraticheTable" class="table-wrap"></div></div></div>
         <div id="admin-salary" class="admin-tab"><div class="white-card"><h3>Team salary</h3><div id="adminSalaryList" class="flat-list"></div></div></div>

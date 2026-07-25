@@ -15,7 +15,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me';
+const SESSION_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET || 'dev-secret-change-me';
 const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'documents';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 12 } });
 
@@ -51,7 +51,7 @@ const ok = (res, data = {}) => res.json({ ok: true, ...data });
 const bad = (res, status, message, details) => res.status(status).json({ ok: false, error: message, details: process.env.NODE_ENV === 'production' ? undefined : details });
 
 const TABLES = [
-  'dashboard_snapshots', 'system_versions', 'dashboard_users', 'clients', 'business_profiles', 'client_assignments',
+  'dashboard_snapshots', 'system_versions', 'dashboard_users', 'password_reset_tokens', 'clients', 'business_profiles', 'client_assignments',
   'plans', 'subscriptions', 'subscription_payments', 'pratiche', 'practice_status_history', 'documents', 'generated_documents',
   'agent_clients', 'agent_credit_transactions', 'agent_credit_requests', 'modify_requests', 'companies', 'invoices',
   'comm_sales', 'comm_f24', 'comm_employees', 'comm_documents', 'comm_deadlines', 'comm_backups', 'communications',
@@ -62,18 +62,20 @@ for (const t of TABLES) memory.set(t, []);
 
 function seedMemory() {
   if (memory.get('dashboard_users').length) return;
+  // Local memory fallback only. Production must use Supabase + password_hash.
+  const devHash = bcrypt.hashSync(process.env.DEV_ADMIN_PASSWORD || 'ChangeMeNow2026!', 10);
   memory.get('dashboard_users').push(
-    { id: 'u-admin', username: 'admin', password: '123', role: 'admin', name: 'Imran Mollah', email: 'almoniexpress@gmail.com', active: true, created_at: now() },
-    { id: 'u-agent', username: 'agent', password: '123', role: 'agent', name: 'Usman Ali', email: 'agent@cafcae.it', active: true, created_at: now() },
-    { id: 'u-comm', username: 'commercialista', password: '123', role: 'commercialista', name: 'Studio Commercialista', email: 'commercialista@cafcae.it', active: true, created_at: now() },
-    { id: 'u-bangla', username: 'bangla', password: '123', role: 'bangla', name: 'Team Bangla', email: 'bangla@cafcae.it', active: true, created_at: now() },
-    { id: 'u-italy', username: 'italy', password: '123', role: 'italy', name: 'Team Italy', email: 'italy@cafcae.it', active: true, created_at: now() }
+    { id: 'u-admin', username: 'admin', password_hash: devHash, role: 'admin', name: 'Imran Mollah', email: 'almoniexpress@gmail.com', active: true, created_at: now() },
+    { id: 'u-agent', username: 'agent', password_hash: devHash, role: 'agent', name: 'Usman Ali', email: 'agent@cafcae.it', active: true, created_at: now() },
+    { id: 'u-comm', username: 'commercialista', password_hash: devHash, role: 'commercialista', name: 'Studio Commercialista', email: 'commercialista@cafcae.it', active: true, created_at: now() },
+    { id: 'u-bangla', username: 'bangla', password_hash: devHash, role: 'bangla', name: 'Team Bangla', email: 'bangla@cafcae.it', active: true, created_at: now() },
+    { id: 'u-italy', username: 'italy', password_hash: devHash, role: 'italy', name: 'Team Italy', email: 'italy@cafcae.it', active: true, created_at: now() }
   );
 }
 seedMemory();
 
 function asyncHandler(fn) { return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next); }
-function tokenFor(user) { return jwt.sign({ sub: user.id, role: user.role, email: user.email, name: user.name }, SESSION_SECRET, { expiresIn: '12h' }); }
+function tokenFor(user) { return jwt.sign({ sub: user.id, id: user.id, username: user.username, role: user.role, email: user.email, name: user.name, office: user.office, phone: user.phone }, SESSION_SECRET, { expiresIn: '12h' }); }
 function userFromToken(req) {
   const token = req.cookies?.cafcae_session || (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
   if (!token) return null;
@@ -104,30 +106,14 @@ async function dbSelect(table, filter = {}, opts = {}) {
 }
 async function dbOne(table, filter = {}, opts = {}) { return (await dbSelect(table, filter, { ...opts, limit: 1 }))[0] || null; }
 async function dbInsert(table, row) {
-  const isUuid = value =>
-    typeof value === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-
-  const record = {
-    created_at: row.created_at || now(),
-    updated_at: row.updated_at || now(),
-    ...row
-  };
-
+  const record = { id: row.id || nanoid(12), created_at: row.created_at || now(), updated_at: row.updated_at || now(), ...row };
   if (supabase) {
-    // Supabase tables use UUID default IDs. Do not send local IDs like p-123 or nanoid to UUID columns.
-    if (!isUuid(record.id)) delete record.id;
     const { data, error } = await supabase.from(table).insert(record).select().single();
     if (error) throw error;
     return data;
   }
-
-  const localRecord = {
-    id: row.id || nanoid(12),
-    ...record
-  };
-  memory.get(table).unshift(localRecord);
-  return localRecord;
+  memory.get(table).unshift(record);
+  return record;
 }
 async function dbUpdate(table, id, patch) {
   const update = { ...patch, updated_at: now() };
@@ -229,22 +215,116 @@ app.post('/api/live/state', asyncHandler(async (req, res) => {
   ok(res, { snapshot: saved, version: v.version });
 }));
 
+function publicUser(user = {}) {
+  const { password, password_hash, reset_token_hash, ...safe } = user;
+  return safe;
+}
+function passwordPolicy(password) {
+  if (!password || String(password).length < 8) return 'La password deve avere almeno 8 caratteri.';
+  if (String(password).toLowerCase() === 'password' || String(password) === '123') return 'Questa password non è sicura.';
+  return null;
+}
+async function findDashboardUser(usernameOrEmail) {
+  const needle = String(usernameOrEmail || '').toLowerCase().trim();
+  const users = await dbSelect('dashboard_users');
+  return users.find(u => u.active !== false && (
+    String(u.username || '').toLowerCase() === needle ||
+    String(u.email || '').toLowerCase() === needle
+  ));
+}
+async function setUserPassword(userId, password) {
+  const policy = passwordPolicy(password);
+  if (policy) throw new Error(policy);
+  return dbUpdate('dashboard_users', userId, {
+    password: null,
+    password_hash: await bcrypt.hash(String(password), 12),
+    failed_attempts: 0,
+    locked_until: null
+  });
+}
+function cookieOptions(req) {
+  const prod = process.env.NODE_ENV === 'production';
+  return {
+    httpOnly: true,
+    sameSite: prod ? 'none' : 'lax',
+    secure: prod || req.secure || req.headers['x-forwarded-proto'] === 'https',
+    maxAge: 12 * 60 * 60 * 1000,
+    path: '/'
+  };
+}
+
 // Auth.
 app.post('/api/auth/login', asyncHandler(async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) return bad(res, 400, 'Username e password sono obbligatori.');
-  const users = await dbSelect('dashboard_users');
-  const user = users.find(u => u.active !== false && (String(u.username || '').toLowerCase() === String(username).toLowerCase() || String(u.email || '').toLowerCase() === String(username).toLowerCase()));
+  const user = await findDashboardUser(username);
   if (!user) return bad(res, 401, 'Credenziali non valide.');
-  const valid = user.password_hash ? await bcrypt.compare(password, user.password_hash) : user.password === password;
-  if (!valid) return bad(res, 401, 'Credenziali non valide.');
+  if (user.locked_until && new Date(user.locked_until) > new Date()) return bad(res, 423, 'Account temporaneamente bloccato. Riprova più tardi.');
+
+  let valid = false;
+  if (user.password_hash) valid = await bcrypt.compare(String(password), user.password_hash);
+  // Legacy plain passwords are blocked by default. Enable only temporarily with ALLOW_LEGACY_PASSWORDS=true.
+  if (!valid && process.env.ALLOW_LEGACY_PASSWORDS === 'true' && user.password) valid = String(user.password) === String(password);
+
+  if (!valid) {
+    const attempts = safeNumber(user.failed_attempts) + 1;
+    const patch = { failed_attempts: attempts };
+    if (attempts >= 6) patch.locked_until = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    await dbUpdate('dashboard_users', user.id, patch).catch(() => null);
+    return bad(res, 401, 'Credenziali non valide.');
+  }
+
+  if (!user.password_hash) await setUserPassword(user.id, password).catch(() => null);
+  await dbUpdate('dashboard_users', user.id, { failed_attempts: 0, locked_until: null, last_login_at: now() }).catch(() => null);
   const token = tokenFor(user);
-  res.cookie('cafcae_session', token, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 12 * 60 * 60 * 1000 });
+  res.cookie('cafcae_session', token, cookieOptions(req));
   await audit('login', 'dashboard_user', user.id, null, user, null, { role: user.role }, req);
-  ok(res, { user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+  ok(res, { token, user: publicUser(user) });
 }));
-app.post('/api/auth/logout', (_req, res) => { res.clearCookie('cafcae_session'); ok(res); });
-app.get('/api/auth/me', requireAuth, (req, res) => ok(res, { user: req.user }));
+app.post('/api/auth/logout', (req, res) => { res.clearCookie('cafcae_session', cookieOptions(req)); ok(res); });
+app.get('/api/auth/me', requireAuth, asyncHandler(async (req, res) => {
+  const user = await dbOne('dashboard_users', { id: req.user.sub || req.user.id });
+  ok(res, { user: publicUser(user || req.user) });
+}));
+app.post('/api/auth/change-password', requireAuth, asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  const user = await dbOne('dashboard_users', { id: req.user.sub || req.user.id });
+  if (!user) return bad(res, 404, 'Utente non trovato.');
+  const valid = user.password_hash ? await bcrypt.compare(String(currentPassword || ''), user.password_hash) : false;
+  if (!valid) return bad(res, 401, 'Password attuale non corretta.');
+  const updated = await setUserPassword(user.id, newPassword);
+  await audit('password_changed', 'dashboard_user', user.id, null, req.user, null, { by: 'self' }, req);
+  ok(res, { user: publicUser(updated) });
+}));
+app.post('/api/auth/forgot-password', asyncHandler(async (req, res) => {
+  const email = String(req.body?.email || '').toLowerCase().trim();
+  const user = await findDashboardUser(email);
+  // Always return ok to avoid account enumeration.
+  if (!user) return ok(res, { message: 'Se esiste un account, riceverai istruzioni.' });
+  const token = crypto.randomBytes(32).toString('hex');
+  const token_hash = crypto.createHash('sha256').update(token).digest('hex');
+  const expires_at = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  await dbInsert('password_reset_tokens', { user_id: user.id, email: user.email, token_hash, expires_at, used: false }).catch(async () => {
+    // Memory fallback table may not exist in old list.
+    if (!memory.has('password_reset_tokens')) memory.set('password_reset_tokens', []);
+    memory.get('password_reset_tokens').unshift({ id: nanoid(12), user_id: user.id, email: user.email, token_hash, expires_at, used: false, created_at: now(), updated_at: now() });
+  });
+  const base = process.env.FRONTEND_URL || (String(req.headers.origin || '').replace(/\/$/, '')) || 'https://admin.cafcae.it';
+  ok(res, { message: 'Reset password generato.', reset_url: `${base}/?reset_token=${token}` });
+}));
+app.post('/api/auth/reset-password', asyncHandler(async (req, res) => {
+  const token = String(req.body?.token || '').trim();
+  const password = String(req.body?.password || '');
+  if (!token) return bad(res, 400, 'Token reset mancante.');
+  const token_hash = crypto.createHash('sha256').update(token).digest('hex');
+  const rows = await dbSelect('password_reset_tokens', { token_hash }).catch(() => []);
+  const row = rows.find(r => !r.used && new Date(r.expires_at) > new Date());
+  if (!row) return bad(res, 400, 'Token reset non valido o scaduto.');
+  const updated = await setUserPassword(row.user_id, password);
+  await dbUpdate('password_reset_tokens', row.id, { used: true, used_at: now() }).catch(() => null);
+  await audit('password_reset', 'dashboard_user', row.user_id, null, publicUser(updated), null, { by: 'reset_token' }, req);
+  ok(res, { user: publicUser(updated) });
+}));
 
 // Dashboard by role.
 app.get('/api/dashboard/:role', asyncHandler(async (req, res) => {
@@ -434,11 +514,40 @@ app.get('/api/documents/:id/signed-url', asyncHandler(async (req, res) => {
 app.post('/api/documents/generated', asyncHandler(async (req, res) => ok(res, { document: await dbInsert('generated_documents', req.body || {}) })));
 
 // Admin modules.
-app.get('/api/admin/users', asyncHandler(async (_req, res) => ok(res, { users: await dbSelect('dashboard_users', {}, { order: 'created_at' }) })));
-app.post('/api/admin/users/create', asyncHandler(async (req, res) => {
-  const password = req.body.password || '123';
-  const user = await dbInsert('dashboard_users', { ...req.body, password: undefined, password_hash: await bcrypt.hash(password, 10), active: req.body.active ?? true });
-  ok(res, { user });
+app.get('/api/admin/users', requireAuth, requireRole('admin'), asyncHandler(async (_req, res) => ok(res, { users: (await dbSelect('dashboard_users', {}, { order: 'created_at' })).map(publicUser) })));
+app.post('/api/admin/users/create', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const password = String(req.body.password || '');
+  const policy = passwordPolicy(password);
+  if (policy) return bad(res, 400, policy);
+  if (!req.body.username || !req.body.email || !req.body.name || !req.body.role) return bad(res, 400, 'Nome, email, username e ruolo sono obbligatori.');
+  const exists = await findDashboardUser(req.body.username) || await findDashboardUser(req.body.email);
+  if (exists) return bad(res, 409, 'Username o email già esistente.');
+  const user = await dbInsert('dashboard_users', {
+    username: req.body.username,
+    email: String(req.body.email).toLowerCase(),
+    name: req.body.name,
+    role: req.body.role,
+    office: req.body.office || req.body.role,
+    phone: req.body.phone || '',
+    credit: safeNumber(req.body.credit),
+    salary: safeNumber(req.body.salary),
+    password: null,
+    password_hash: await bcrypt.hash(password, 12),
+    active: req.body.active ?? true
+  });
+  await audit('user_created', 'dashboard_user', user.id, null, req.user, null, publicUser(user), req);
+  ok(res, { user: publicUser(user) });
+}));
+app.post('/api/admin/users/:id/password', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const updated = await setUserPassword(req.params.id, req.body.password);
+  await audit('admin_password_reset', 'dashboard_user', updated.id, null, req.user, null, { target: updated.email }, req);
+  ok(res, { user: publicUser(updated) });
+}));
+app.patch('/api/admin/users/:id', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const patch = { ...req.body };
+  delete patch.password; delete patch.password_hash;
+  const updated = await dbUpdate('dashboard_users', req.params.id, patch);
+  ok(res, { user: publicUser(updated) });
 }));
 app.get('/api/admin/dashboard', asyncHandler(async (_req, res) => {
   const [pratiche, companies, tickets, credit, sales] = await Promise.all([dbSelect('pratiche'), dbSelect('companies'), dbSelect('tickets'), dbSelect('agent_credit_transactions'), dbSelect('comm_sales')]);
