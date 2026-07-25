@@ -36,7 +36,24 @@
     signature730DataUrl: "",
     agentClients: [],
     modifyRequests: [],
-    editingPraticaId: null
+    editingPraticaId: null,
+    productPrices: {},
+    servicePermissions: {},
+    promotions: [],
+    popups: [],
+    complaints: [],
+    salaryPayments: [],
+    commissionPayments: [],
+    adminSales: [],
+    portalSettings: {
+      headerTheme: 'cgn-blue',
+      teamHeaderText: 'CAF CAE operativo',
+      agentBannerText: 'Portale agente CAF CAE',
+      globalPopupActive: false,
+      globalPopupTitle: '',
+      globalPopupMessage: ''
+    },
+    dashboardStructures: {}
   };
 
 
@@ -91,6 +108,16 @@
     STATE.receipts = [];
     STATE.teamActions = [];
     STATE.researchLinks = CATALOG.sourceLinks || [];
+    STATE.productPrices = {};
+    STATE.servicePermissions = {};
+    STATE.promotions = [];
+    STATE.popups = [];
+    STATE.complaints = [];
+    STATE.salaryPayments = [];
+    STATE.commissionPayments = [];
+    STATE.adminSales = [];
+    STATE.portalSettings = STATE.portalSettings || {};
+    STATE.dashboardStructures = {};
     sanitizeUsers();
     saveState();
   }
@@ -110,6 +137,21 @@
     STATE.companies ||= [];
     STATE.invoices ||= [];
     STATE.communications ||= [];
+    STATE.productPrices ||= {};
+    STATE.servicePermissions ||= {};
+    STATE.promotions ||= [];
+    STATE.popups ||= [];
+    STATE.complaints ||= [];
+    STATE.salaryPayments ||= [];
+    STATE.commissionPayments ||= [];
+    STATE.adminSales ||= [];
+    STATE.dashboardStructures ||= {};
+    STATE.portalSettings ||= {};
+    STATE.portalSettings.headerTheme ||= 'cgn-blue';
+    STATE.portalSettings.teamHeaderText ||= 'CAF CAE operativo';
+    STATE.portalSettings.agentBannerText ||= 'Portale agente CAF CAE';
+    STATE.portalSettings.globalPopupActive ||= false;
+    STATE.users.forEach(u => { u.serviceAccess ||= []; u.blockStatus ||= (u.active === false ? 'Blocked' : 'Active'); });
     if (!STATE.notices.length) {
       STATE.notices = [
         { id:'n1', targetRole:'agent', level:'urgent', title:'730: controlla delega e CU', message:'Prima di inviare a Team Bangla verifica firma, CU, documento identità e privacy.', deadline:'2026-07-01', createdAt: today() },
@@ -136,7 +178,39 @@
     localStorage.setItem('caf_cae_v12_state', JSON.stringify(copy));
     if (window.CAF_CAE_API?.enabled?.() && STATE.session) {
       window.CAF_CAE_API.pushSnapshot(STATE, STATE.session).catch(() => showToast('Offline backend: salvato localmente.', 'warning'));
+      if (STATE.session.role === 'admin') {
+        window.CAF_CAE_API.pushSnapshot(sharedAdminState(), { role: 'all', email: 'all', name: STATE.session.name || 'Admin' }).catch(() => {});
+      }
     }
+  }
+
+
+  function sharedAdminState() {
+    return {
+      productPrices: STATE.productPrices || {},
+      servicePermissions: STATE.servicePermissions || {},
+      promotions: STATE.promotions || [],
+      popups: STATE.popups || [],
+      portalSettings: STATE.portalSettings || {},
+      dashboardStructures: STATE.dashboardStructures || {},
+      notices: STATE.notices || [],
+      researchLinks: STATE.researchLinks || [],
+      updatedAt: today()
+    };
+  }
+
+  function mergeSharedAdminState(shared = {}) {
+    ['productPrices','servicePermissions','promotions','popups','portalSettings','dashboardStructures','notices','researchLinks'].forEach(k => {
+      if (shared[k] !== undefined) STATE[k] = shared[k];
+    });
+  }
+
+  async function pullSharedAdminState() {
+    if (!window.CAF_CAE_API?.enabled?.() || !STATE.session) return;
+    try {
+      const shared = await window.CAF_CAE_API.get('/api/live/state?role=all&email=all');
+      if (shared?.ok && shared.state) mergeSharedAdminState(shared.state);
+    } catch (_) {}
   }
 
   async function pullBackendState(reason = 'sync') {
@@ -152,6 +226,7 @@
         STATE.signature730DataUrl = '';
         STATE.banglaSignatureDataUrl = '';
         normalizePratiche();
+        await pullSharedAdminState();
         localStorage.setItem('caf_cae_v12_state', JSON.stringify({ ...STATE, session: null, chartRefs: {} }));
         setTimeout(() => { renderAll(); showToast(reason === 'login' ? 'Dati live caricati dal backend.' : 'Dashboard aggiornata in tempo reale.'); }, 80);
       }
@@ -238,7 +313,7 @@
   function serviceByKey(key) {
     for (const g of CATALOG.agentServiceGroups) {
       const found = g.services.find(s => s.key === key || s.title === key);
-      if (found) return { ...found, group: g.group, groupIcon: g.icon };
+      if (found) return applyServiceOverride({ ...found, group: g.group, groupIcon: g.icon });
     }
     return null;
   }
@@ -246,10 +321,41 @@
   function serviceByTitle(title) {
     for (const g of CATALOG.agentServiceGroups) {
       const found = g.services.find(s => s.title === title);
-      if (found) return { ...found, group: g.group, groupIcon: g.icon };
+      if (found) return applyServiceOverride({ ...found, group: g.group, groupIcon: g.icon });
     }
     return null;
   }
+
+  function allServicesFlat() {
+    return (CATALOG.agentServiceGroups || []).flatMap(g => (g.services || []).map(s => applyServiceOverride({ ...s, group: g.group, groupIcon: g.icon, groupColor: g.color })));
+  }
+
+  function applyServiceOverride(service = {}) {
+    const ov = (STATE.productPrices || {})[service.key] || {};
+    return {
+      ...service,
+      cost: ov.cost !== undefined && ov.cost !== '' ? Number(ov.cost) : Number(service.cost || 0),
+      commission: ov.commission !== undefined && ov.commission !== '' ? Number(ov.commission) : Number(service.commission || 0),
+      enabled: ov.enabled === undefined ? true : ov.enabled !== false,
+      adminNote: ov.note || ''
+    };
+  }
+
+  function userRecord(email = STATE.session?.email) {
+    return (STATE.users || []).find(u => String(u.email || '').toLowerCase() === String(email || '').toLowerCase() || u.id === STATE.session?.id) || STATE.session || {};
+  }
+
+  function agentAllowedKeys(user = userRecord()) {
+    const byEmail = STATE.servicePermissions?.[user.email] || STATE.servicePermissions?.[user.id] || user.serviceAccess || [];
+    return Array.isArray(byEmail) ? byEmail : [];
+  }
+
+  function canUseService(serviceKey, user = userRecord()) {
+    if (!user || user.role !== 'agent') return true;
+    const allowed = agentAllowedKeys(user);
+    return !allowed.length || allowed.includes(serviceKey);
+  }
+
 
   function agentCredit(email = STATE.session?.email) {
     const tx = STATE.wallet.filter(w => w.agentEmail === email);
@@ -270,13 +376,13 @@
     if (!wrap) return;
     const q = ($('#agentServiceSearch')?.value || '').toLowerCase();
     wrap.innerHTML = CATALOG.agentServiceGroups.map(group => {
-      const items = group.services.filter(s => !q || `${group.group} ${s.title}`.toLowerCase().includes(q));
+      const items = group.services.map(s => applyServiceOverride({ ...s, group: group.group, groupIcon: group.icon })).filter(s => s.enabled !== false && canUseService(s.key)).filter(s => !q || `${group.group} ${s.title}`.toLowerCase().includes(q));
       if (!items.length) return '';
       return `<div class="service-group">
         <div class="service-group-title ${group.color}"><i class="fa-solid ${group.icon}"></i>${group.group}</div>
         ${items.map(s => `<button class="service-btn ${STATE.selectedService?.key === s.key ? 'active' : ''}" data-service-key="${s.key}"><span>${s.title}</span><span class="cost-badge">${money(s.cost)}</span></button>`).join('')}
       </div>`;
-    }).join('');
+    }).join('') || `<div class="flat-item"><div><div class="title">Nessun servizio abilitato</div><div class="meta">Admin deve abilitare i servizi per questo agente.</div></div></div>`;
   }
 
   function renderAgentDashboard() {
@@ -364,7 +470,11 @@
   function renderAgentProfile() { const box=$('#agentProfileBox'); if(!box||STATE.session?.role!=='agent') return; const u=STATE.session; const ps=agentPratiche(); const done=ps.filter(p=>p.status==='Completata').length; const pending=ps.filter(p=>p.status!=='Completata').length; box.innerHTML=`${previewLine('Nome agente',safe(u.name))}${previewLine('Email',safe(u.email))}${previewLine('Telefono',safe(u.phone||'--'))}${previewLine('Sede',safe(u.office||'--'))}${previewLine('Credito disponibile',money(agentCredit()))}${previewLine('Clienti salvati',(STATE.agentClients||[]).filter(c=>c.agentEmail===u.email).length)}${previewLine('Pratiche totali',ps.length)}${previewLine('Completate',done)}${previewLine('In lavorazione',pending)}`; const perf=$('#agentPerformanceBox'); if(perf) perf.innerHTML=`<div class="flat-item"><div><div class="title">Lavoro mese corrente</div><div class="meta">Pratiche create: ${ps.length}<br>Commissioni pending: ${money(ps.reduce((s,p)=>s+(p.commissionStatus==='Paid'?0:Number(p.commission||0)),0))}<br>Documenti mancanti: ${ps.filter(p=>(p.missingDocs||[]).length).length}</div></div></div>`; }
 
   function renderAgentNotices() {
-    const notices = (STATE.notices || []).filter(n => !n.targetRole || n.targetRole === 'agent' || n.targetRole === 'all');
+    const notices = [
+      ...(STATE.notices || []).filter(n => !n.targetRole || n.targetRole === 'agent' || n.targetRole === 'all'),
+      ...(STATE.promotions || []).filter(n => n.active !== false && (!n.targetRole || n.targetRole === 'agent' || n.targetRole === 'all')).map(n => ({ ...n, level: n.level || 'info', deadline: n.endDate || n.deadline })),
+      ...(STATE.popups || []).filter(n => n.active !== false && (!n.targetRole || n.targetRole === 'agent' || n.targetRole === 'all')).map(n => ({ ...n, level: 'urgent', deadline: n.endDate || n.deadline }))
+    ];
     const urgentPratiche = agentPratiche().filter(p => p.deadline && daysUntil(p.deadline) <= 7 && !['Completata','Respinta','Annullata'].includes(p.status));
     const readyPratiche = agentPratiche().filter(p => p.documentStatus === 'Documenti ricevuti' || p.status === 'In verifica');
     $('#agentUrgentCount') && ($('#agentUrgentCount').textContent = urgentPratiche.length);
@@ -396,7 +506,7 @@
 
   function selectService(key, openTab = true) {
     const service = serviceByKey(key);
-    if (!service) return;
+    if (!service || service.enabled === false || !canUseService(service.key)) return showToast('Servizio non abilitato per questo agente.', 'warning');
     STATE.selectedService = service;
     $('#agentSelectedServiceLabel').textContent = `${service.group} › ${service.title}`;
     $('#agentFormTitle').textContent = `${service.title} - nuova domanda`;
@@ -710,6 +820,7 @@
       return `<div class="role-summary-card"><span>${role}</span><strong>${list.length}</strong><small>${list.filter(u => u.active !== false).length} attivi</small></div>`;
     }).join(''));
     $('#adminOrderAgent') && ($('#adminOrderAgent').innerHTML = '<option value="">Creato da Admin</option>' + STATE.users.filter(u => u.role === 'agent' && u.active !== false).map(u => `<option value="${safe(u.email)}">${safe(u.name)} · ${safe(u.email)}</option>`).join(''));
+    $('#adminOrderService') && ($('#adminOrderService').innerHTML = allServicesFlat().filter(s=>s.enabled!==false).map(s=>`<option value="${safe(s.key)}">${safe(s.group)} › ${safe(s.title)} · ${money(s.cost)}</option>`).join(''));
     $('#adminTodayWork') && ($('#adminTodayWork').innerHTML = (STATE.dailyReports || []).filter(r => (r.reportDate || r.date || '').slice(0,10) === today()).slice(0,6).map(r => `<div class="flat-item"><div><div class="title">${safe(r.name || r.userEmail || r.role)}</div><div class="meta">${safe(r.role)} · completate ${safe(r.done || 0)} · problemi ${safe(r.issues || 0)}<br>${safe(r.note || '')}</div></div>${statusChip('Oggi')}</div>`).join('') || emptyFlat('Nessun report oggi','Team Bangla e Team Italy invieranno qui il lavoro giornaliero.'));
     $('#adminTimeline').innerHTML = [...STATE.wallet].slice(0, 10).map(w => `<div class="timeline-item"><span>${w.date}</span><div><b>${w.reason}</b><div class="meta">${w.agentEmail}</div></div><span class="amount ${w.type}">${w.type === 'plus' ? '+' : '-'}${money(w.amount)}</span></div>`).join('');
     $('#adminUsersList').innerHTML = STATE.users.map(u => `<div class="flat-item admin-user-row"><div><div class="title">${safe(u.name || '--')} ${u.active === false ? '<span class="chip red">OFF</span>' : '<span class="chip green">ON</span>'}</div><div class="meta"><b>${safe(u.role || '--')}</b> · username <code>${safe(u.username || '')}</code> · ${safe(u.email || '--')}<br>Telefono: ${safe(u.phone || '--')} · Sede: ${safe(u.office || '--')} · Credito: ${money(u.credit || agentCredit(u.email))} · Salary: ${money(u.salary || 0)}</div></div><div class="admin-user-actions"><button class="btn light" data-reset-user-pass="${safe(u.id)}"><i class="fa-solid fa-key"></i> Reset</button><button class="btn red" data-toggle-user="${safe(u.id)}">${u.active !== false ? 'Disattiva' : 'Attiva'}</button></div></div>`).join('');
@@ -724,11 +835,80 @@
     $('#adminPraticheTable').innerHTML = table(['Codice', 'Source', 'Cliente', 'Servizio', 'Team', 'Stato', 'Costo', 'Commissione','Azioni'], STATE.pratiche.map(p => [p.code, p.source, fullName(p.client), p.serviceTitle, p.assignedTeam || '--', statusChip(p.status), money(p.cost), money(p.commission), `<button class="btn light" data-detail="${p.id}">Apri</button> <button class="btn orange" data-edit-status="${p.id}">Stato</button> <button class="btn light" data-add-docs="${p.id}">Docs</button> <button class="btn red" data-cancel-pratica="${p.id}">Cancel</button>`]));
     $('#adminSalaryList').innerHTML = STATE.users.filter(u => ['bangla', 'italy'].includes(u.role)).map(u => {
       const reports = (STATE.dailyReports || []).filter(r => (r.userEmail || r.email) === u.email || r.role === u.role);
-      return `<div class="flat-item"><div><div class="title">${safe(u.name)}</div><div class="meta">${safe(u.role)} · ${safe(u.email)} · report: ${reports.length}</div></div><b>${money(u.salary)}</b></div>`;
+      return `<div class="flat-item"><div><div class="title">${safe(u.name)}</div><div class="meta">${safe(u.role)} · ${safe(u.email)} · report: ${reports.length}</div></div><div><b>${money(u.salary)}</b><br><button class="btn green" data-pay-salary="${safe(u.id)}">Paga/segna</button></div></div>`;
     }).join('') || emptyFlat('Nessun team registrato','Crea Team Bangla/Italy da sezione Team & utenti.');
-    $('#adminCommissionList').innerHTML = STATE.pratiche.filter(p => p.agentEmail).map(p => `<div class="flat-item"><div><div class="title">${safe(p.agentName || p.agentEmail)} · ${safe(p.code)}</div><div class="meta">${safe(p.serviceTitle)} · ${safe(p.commissionStatus || 'Pending')}</div></div><b>${money(p.commission)}</b></div>`).join('') || emptyFlat('Nessuna commissione','Le commissioni agent appariranno qui.');
+    $('#adminCommissionList').innerHTML = STATE.pratiche.filter(p => p.agentEmail).map(p => `<div class="flat-item"><div><div class="title">${safe(p.agentName || p.agentEmail)} · ${safe(p.code)}</div><div class="meta">${safe(p.serviceTitle)} · ${safe(p.commissionStatus || 'Pending')}</div></div><div><b>${money(p.commission)}</b><br>${p.commissionStatus==='Paid'?statusChip('Paid'):`<button class="btn green" data-pay-commission="${safe(p.id)}">Paga</button>`}</div></div>`).join('') || emptyFlat('Nessuna commissione','Le commissioni agent appariranno qui.');
     $('#adminDailyReports') && ($('#adminDailyReports').innerHTML = (STATE.dailyReports || []).slice(0,30).map(r => `<div class="flat-item"><div><div class="title">${safe(r.name || r.userEmail || r.role)} · ${safe(r.reportDate || r.date || today())}</div><div class="meta">Ruolo: ${safe(r.role)} · completate: ${safe(r.done || 0)} · problemi: ${safe(r.issues || 0)}<br>${safe(r.note || '')}</div></div>${statusChip(r.role || 'team')}</div>`).join('') || emptyFlat('Nessun daily report','I report salvati da Team Bangla/Italy appariranno qui.'));
     $('#adminTeamActions') && ($('#adminTeamActions').innerHTML = (STATE.teamActions || []).slice(0,30).map(a => `<div class="timeline-item"><span>${safe(a.date || today())}</span><div><b>${safe(a.action || 'Azione team')}</b><div class="meta">${safe(a.by || a.role || '--')} · ${safe(a.code || a.praticaCode || '')}</div></div></div>`).join('') || emptyFlat('Nessuna azione team','Le azioni sulle pratiche appariranno qui.'));
+    renderAdminProV15();
+  }
+
+
+  function periodMatches(dateValue, period) {
+    const d = String(dateValue || today()).slice(0, 10);
+    const t = today();
+    if (period === 'today') return d === t;
+    if (period === 'month') return d.slice(0, 7) === t.slice(0, 7);
+    if (period === 'year') return d.slice(0, 4) === t.slice(0, 4);
+    return true;
+  }
+
+  function adminSalesStats(period = $('#adminSalesPeriod')?.value || 'today') {
+    const pratiche = (STATE.pratiche || []).filter(p => periodMatches(p.createdAt || p.updatedAt, period));
+    const sales = (STATE.adminSales || []).filter(s => periodMatches(s.date, period));
+    const commSales = (STATE.commSales || []).filter(s => periodMatches(s.date, period));
+    const invoices = (STATE.invoices || []).filter(s => periodMatches(s.date || s.createdAt, period));
+    const praticaRevenue = pratiche.reduce((s,p)=>s + (/attesa/i.test(p.paymentStatus||'') ? 0 : Number(p.cost||0)),0);
+    const manualRevenue = sales.reduce((s,x)=>s+Number(x.amount||0),0);
+    const commercialistaRevenue = commSales.reduce((s,x)=>s+Number(x.card||0)+Number(x.cash||0)+Number(x.other||0)+Number(x.agencyTotal||0),0) + invoices.reduce((s,x)=>s+Number(x.total||0),0);
+    const commission = pratiche.reduce((s,p)=>s+Number(p.commission||0),0);
+    return { pratiche, sales, commSales, invoices, praticaRevenue, manualRevenue, commercialistaRevenue, commission, total: praticaRevenue + manualRevenue + commercialistaRevenue, count: pratiche.length + sales.length + commSales.length + invoices.length };
+  }
+
+  function roleUserList(role) { return (STATE.users || []).filter(u => u.role === role); }
+
+  function serviceMatrixHtml(selected = []) {
+    return allServicesFlat().map(s => `<label class="service-check"><input type="checkbox" data-ad-service-access value="${safe(s.key)}" ${selected.includes(s.key) ? 'checked' : ''}><span><b>${safe(s.title)}</b><small>${safe(s.group)} · ${money(s.cost)}</small></span></label>`).join('');
+  }
+
+  function renderAdminProV15() {
+    if (STATE.session?.role !== 'admin') return;
+    const period = $('#adminSalesPeriod')?.value || 'today';
+    const stats = adminSalesStats(period);
+    ['adminSalesTotal','adminSalesTotalHome'].forEach(id => $('#'+id) && ($('#'+id).textContent = money(stats.total)));
+    ['adminSalesOrders','adminSalesOrdersHome'].forEach(id => $('#'+id) && ($('#'+id).textContent = stats.count));
+    $('#adminSalesPratiche') && ($('#adminSalesPratiche').textContent = money(stats.praticaRevenue));
+    ['adminSalesCommercialista','adminSalesCommercialistaHome'].forEach(id => $('#'+id) && ($('#'+id).textContent = money(stats.commercialistaRevenue)));
+    $('#adminSalesCommission') && ($('#adminSalesCommission').textContent = money(stats.commission));
+    $('#adminSalesList') && ($('#adminSalesList').innerHTML = [
+      ...stats.pratiche.map(p => ({ date:p.createdAt||p.updatedAt, title:p.code, meta:`${p.serviceTitle} · ${fullName(p.client)} · ${p.paymentStatus}`, amount:p.cost })),
+      ...stats.sales.map(s => ({ date:s.date, title:s.title||'Vendita manuale', meta:s.source||'Admin', amount:s.amount })),
+      ...stats.invoices.map(i => ({ date:i.date||i.createdAt, title:i.desc||'Fattura', meta:i.client||i.companyId||'Commercialista', amount:i.total })),
+      ...stats.commSales.map(s => ({ date:s.date, title:'Chiusura commercialista', meta:s.status||'', amount:Number(s.card||0)+Number(s.cash||0)+Number(s.other||0) }))
+    ].slice(0,40).map(x => `<div class="flat-item"><div><div class="title">${safe(x.title)}</div><div class="meta">${safe(x.date)} · ${safe(x.meta)}</div></div><b>${money(x.amount)}</b></div>`).join('') || emptyFlat('Nessuna vendita','Le vendite giornaliere/mensili/annuali appariranno qui.'));
+
+    ['adminAgentControlList','adminAgentControlListHome'].forEach(listId => { const listEl = $('#'+listId); if (!listEl) return; listEl.innerHTML = roleUserList('agent').map(u => {
+      const access = agentAllowedKeys(u);
+      const ps = (STATE.pratiche || []).filter(p => p.agentEmail === u.email);
+      return `<div class="flat-item admin-pro-user"><div><div class="title">${safe(u.name)} ${u.active === false ? '<span class="chip red">BLOCCATO</span>' : '<span class="chip green">ATTIVO</span>'}</div><div class="meta">ID: <code>${safe(u.id)}</code> · ${safe(u.email)}<br>Credito: ${money(agentCredit(u.email))} · Ordini: ${ps.length} · Servizi abilitati: ${access.length ? access.length : 'Tutti'}</div></div><div class="admin-user-actions"><button class="btn blue" data-admin-agent-credit="${safe(u.id)}">Credito</button><button class="btn light" data-admin-agent-services="${safe(u.id)}">Servizi</button><button class="btn red" data-admin-block-user="${safe(u.id)}">${u.active === false ? 'Sblocca' : 'Blocca'}</button></div></div>`;
+    }).join('') || emptyFlat('Nessun agente','Crea agenti da Team & utenti.'); });
+
+    $('#adminTeamReportPro') && ($('#adminTeamReportPro').innerHTML = ['bangla','italy'].map(role => {
+      const users = roleUserList(role);
+      const done = (STATE.pratiche || []).filter(p => p.assignedTeam === role && p.status === 'Completata').length;
+      const open = (STATE.pratiche || []).filter(p => p.assignedTeam === role && p.status !== 'Completata').length;
+      const reports = (STATE.dailyReports || []).filter(r => r.role === role);
+      return `<div class="admin-team-card"><h3>${role === 'bangla' ? 'Team Bangla' : 'Team Italy'}</h3><div class="mini-kpis"><span><b>${users.length}</b> operatori</span><span><b>${open}</b> aperte</span><span><b>${done}</b> completate</span><span><b>${reports.length}</b> report</span></div><div class="flat-list">${reports.slice(0,4).map(r=>`<div class="flat-item"><div><div class="title">${safe(r.name||r.userEmail||role)}</div><div class="meta">${safe(r.reportDate||r.date)} · completate ${safe(r.done||0)} · problemi ${safe(r.issues||0)}<br>${safe(r.note||'')}</div></div></div>`).join('') || emptyFlat('Nessun report','Nessun report ricevuto.')}</div></div>`;
+    }).join(''));
+
+    $('#adminCommercialistaOps') && ($('#adminCommercialistaOps').innerHTML = `<div class="mini-kpis"><span><b>${STATE.companies.length}</b> ditte</span><span><b>${STATE.invoices.length}</b> fatture</span><span><b>${money((STATE.invoices||[]).reduce((s,i)=>s+Number(i.total||0),0))}</b> fatturato</span><span><b>${(STATE.commF24||[]).length}</b> F24</span></div>` + ((STATE.companies||[]).slice(0,10).map(c=>`<div class="flat-item"><div><div class="title">${safe(c.name)}</div><div class="meta">P.IVA ${safe(c.vat||'--')} · ${safe(c.status||'Attivo')} · Piano ${safe(c.plan||'--')}</div></div>${statusChip(c.payStatus||c.status||'Attivo')}</div>`).join('') || emptyFlat('Nessuna ditta','Le ditte commercialista appariranno qui.')));
+
+    $('#adminProductPriceTable') && ($('#adminProductPriceTable').innerHTML = table(['Servizio','Gruppo','Prezzo','Commissione','Stato','Azioni'], allServicesFlat().map(s => [safe(s.title), safe(s.group), money(s.cost), money(s.commission), s.enabled === false ? statusChip('Disattivato') : statusChip('Attivo'), `<button class="btn light" data-edit-product-price="${safe(s.key)}">Modifica</button>`])));
+    $('#adServiceAccessBox') && ($('#adServiceAccessBox').innerHTML = serviceMatrixHtml([]));
+    $('#adminPromoList') && ($('#adminPromoList').innerHTML = (STATE.promotions || []).map(p => `<div class="flat-item"><div><div class="title">${safe(p.title)} · ${statusChip(p.active === false ? 'OFF' : 'ON')}</div><div class="meta">Target ${safe(p.targetRole||'all')} · ${safe(p.startDate||'')} → ${safe(p.endDate||'')}<br>${safe(p.message||'')}</div></div><button class="btn red" data-delete-promo="${safe(p.id)}">Elimina</button></div>`).join('') || emptyFlat('Nessuna promozione','Pubblica slide/testi per agenti o tutti i ruoli.'));
+    $('#adminPopupList') && ($('#adminPopupList').innerHTML = (STATE.popups || []).map(p => `<div class="flat-item"><div><div class="title">${safe(p.title)} · ${statusChip(p.active === false ? 'OFF' : 'ON')}</div><div class="meta">Target ${safe(p.targetRole||'all')}<br>${safe(p.message||'')}</div></div><button class="btn red" data-delete-popup="${safe(p.id)}">Elimina</button></div>`).join('') || emptyFlat('Nessun popup','Crea popup avviso per agent/team/clienti interni.'));
+    $('#adminComplaintList') && ($('#adminComplaintList').innerHTML = (STATE.complaints || []).map(c => `<div class="flat-item"><div><div class="title">${safe(c.subject)} · ${statusChip(c.status||'Open')}</div><div class="meta">${safe(c.date)} · ${safe(c.source||'Admin')} · Pratica ${safe(c.praticaCode||'--')}<br>${safe(c.message||'')}</div></div><button class="btn green" data-close-complaint="${safe(c.id)}">Chiudi</button></div>`).join('') || emptyFlat('Nessun reclamo/problema','Registra problemi di ordine, reclami, errori o note operative.'));
+    $('#adminPortalSettingsPreview') && ($('#adminPortalSettingsPreview').innerHTML = `${previewLine('Header', STATE.portalSettings.headerTheme || 'cgn-blue')}${previewLine('Testo team', STATE.portalSettings.teamHeaderText || '--')}${previewLine('Banner agent', STATE.portalSettings.agentBannerText || '--')}${previewLine('Popup globale', STATE.portalSettings.globalPopupActive ? 'Attivo' : 'Spento')}`);
   }
 
   function table(headers, rows) {
@@ -942,13 +1122,17 @@
       office: $('#adOffice')?.value.trim() || $('#adRole').selectedOptions[0].text,
       credit: toNum($('#adCredit')?.value),
       salary: toNum($('#adSalary')?.value) || (['bangla', 'italy'].includes(selectedRole) ? 1200 : 0),
-      active: ($('#adActive')?.value || 'true') === 'true'
+      serviceAccess: $$('[data-ad-service-access]:checked').map(x => x.value),
+      active: ($('#adActive')?.value || 'true') === 'true',
+      blockStatus: (($('#adActive')?.value || 'true') === 'true') ? 'Active' : 'Blocked'
     };
     try {
       const created = await window.CAF_CAE_API?.createUser?.(payload);
       const u = created?.user || { ...payload, id: `u-${Date.now()}` };
       delete u.password; delete u.password_hash;
       STATE.users.push(u);
+      u.serviceAccess = payload.serviceAccess || [];
+      if (u.role === 'agent') STATE.servicePermissions[u.email] = u.serviceAccess;
       if (u.role === 'agent' && payload.credit > 0) addWallet(u.email, 'plus', payload.credit, 'Credito iniziale creazione admin');
       saveState();
       e.target.reset();
@@ -1053,6 +1237,103 @@
     } catch (err) {
       showToast(err.message || 'Errore reset password utente.', 'error');
     }
+  }
+
+
+  function submitAdminManualSale(e) {
+    e.preventDefault();
+    STATE.adminSales ||= [];
+    const item = { id:`sale-admin-${Date.now()}`, date: $('#adminManualSaleDate')?.value || today(), title: $('#adminManualSaleTitle')?.value || 'Vendita manuale', source: $('#adminManualSaleSource')?.value || 'Admin', amount: toNum($('#adminManualSaleAmount')?.value), note: $('#adminManualSaleNote')?.value || '' };
+    if (item.amount <= 0) return showToast('Inserisci importo vendita valido.', 'warning');
+    STATE.adminSales.unshift(item);
+    saveState(); e.target.reset(); renderAll(); showToast('Vendita manuale salvata.');
+  }
+
+  function submitAdminPromotion(e) {
+    e.preventDefault();
+    STATE.promotions ||= [];
+    STATE.promotions.unshift({ id:`promo-${Date.now()}`, title:$('#promoTitle')?.value||'', targetRole:$('#promoTarget')?.value||'agent', level:$('#promoLevel')?.value||'info', message:$('#promoMessage')?.value||'', startDate:$('#promoStart')?.value||today(), endDate:$('#promoEnd')?.value||'', active:true, createdAt:today() });
+    saveState(); e.target.reset(); renderAll(); showToast('Promozione/slide pubblicata.');
+  }
+
+  function submitAdminPopup(e) {
+    e.preventDefault();
+    STATE.popups ||= [];
+    STATE.popups.unshift({ id:`popup-${Date.now()}`, title:$('#popupTitle')?.value||'', targetRole:$('#popupTarget')?.value||'all', message:$('#popupMessage')?.value||'', active:$('#popupActive')?.value !== 'false', createdAt:today() });
+    saveState(); e.target.reset(); renderAll(); showToast('Popup salvato e condiviso.');
+  }
+
+  function submitAdminComplaint(e) {
+    e.preventDefault();
+    STATE.complaints ||= [];
+    STATE.complaints.unshift({ id:`complaint-${Date.now()}`, date:today(), source:$('#complaintSource')?.value||'Admin', praticaCode:$('#complaintPratica')?.value||'', subject:$('#complaintSubject')?.value||'', message:$('#complaintMessage')?.value||'', status:'Open' });
+    saveState(); e.target.reset(); renderAll(); showToast('Problema/reclamo registrato.');
+  }
+
+  function submitAdminPortalSettings(e) {
+    e.preventDefault();
+    STATE.portalSettings ||= {};
+    Object.assign(STATE.portalSettings, { headerTheme: $('#portalHeaderTheme')?.value || 'cgn-blue', teamHeaderText: $('#portalTeamText')?.value || '', agentBannerText: $('#portalAgentText')?.value || '', globalPopupActive: $('#portalGlobalPopup')?.value === 'true', globalPopupTitle: $('#portalPopupTitle')?.value || '', globalPopupMessage: $('#portalPopupMessage')?.value || '' });
+    saveState(); renderAll(); showToast('Impostazioni portali salvate.');
+  }
+
+  function editProductPrice(key) {
+    const service = serviceByKey(key);
+    if (!service) return;
+    const cost = prompt(`Nuovo prezzo per ${service.title}:`, service.cost);
+    if (cost === null) return;
+    const commission = prompt(`Nuova commissione agente per ${service.title}:`, service.commission || 0);
+    if (commission === null) return;
+    const enabled = confirm('OK = servizio attivo, Annulla = servizio disattivato');
+    STATE.productPrices ||= {};
+    STATE.productPrices[key] = { cost: toNum(cost), commission: toNum(commission), enabled, updatedAt: today(), updatedBy: STATE.session?.email };
+    saveState(); renderAll(); showToast('Prezzo servizio aggiornato.');
+  }
+
+  function adminAgentCredit(userId) {
+    const u = STATE.users.find(x => x.id === userId); if (!u) return;
+    const amount = prompt(`Importo credito da aggiungere/detrarre per ${u.name}. Usa negativo per scalare:`, '50');
+    if (amount === null) return;
+    const n = toNum(amount);
+    if (!n) return showToast('Importo non valido.', 'warning');
+    addWallet(u.email, n > 0 ? 'plus' : 'minus', Math.abs(n), `Admin credit adjustment ${STATE.session?.name || ''}`);
+    showToast('Credito agente aggiornato.');
+  }
+
+  function adminAgentServices(userId) {
+    const u = STATE.users.find(x => x.id === userId); if (!u) return;
+    const current = agentAllowedKeys(u).join(',');
+    const input = prompt('Servizi abilitati per agente. Lascia vuoto = tutti. Inserisci key separate da virgola (es. 730,isee,f24-compilazione):', current);
+    if (input === null) return;
+    const keys = input.split(',').map(x => x.trim()).filter(Boolean);
+    u.serviceAccess = keys;
+    STATE.servicePermissions ||= {};
+    STATE.servicePermissions[u.email] = keys;
+    saveState(); renderAll(); showToast(keys.length ? 'Servizi agente aggiornati.' : 'Agente abilitato a tutti i servizi.');
+  }
+
+  function adminBlockUser(userId) {
+    const u = STATE.users.find(x => x.id === userId); if (!u || u.id === STATE.session?.id) return;
+    if (u.active === false) { u.active = true; u.blockStatus = 'Active'; u.blockReason = ''; }
+    else { u.active = false; u.blockStatus = 'Blocked'; u.blockReason = prompt('Motivo blocco utente/agent:', 'Bloccato da Admin') || 'Bloccato da Admin'; }
+    window.CAF_CAE_API?.patch?.(`/api/admin/users/${encodeURIComponent(u.id)}`, { active: u.active, blockStatus: u.blockStatus, blockReason: u.blockReason }).catch(()=>{});
+    saveState(); renderAll(); showToast(u.active ? 'Utente sbloccato.' : 'Utente bloccato.');
+  }
+
+  function adminPaySalary(userId) {
+    const u = STATE.users.find(x => x.id === userId); if (!u) return;
+    const amount = prompt(`Importo salary pagato a ${u.name}:`, u.salary || 0); if (amount === null) return;
+    STATE.salaryPayments ||= [];
+    STATE.salaryPayments.unshift({ id:`sal-${Date.now()}`, userId:u.id, userEmail:u.email, name:u.name, role:u.role, amount:toNum(amount), date:today(), status:'Paid', by:STATE.session?.name });
+    saveState(); renderAll(); showToast('Pagamento salary registrato.');
+  }
+
+  function adminPayCommission(praticaId) {
+    const p = STATE.pratiche.find(x => x.id === praticaId); if (!p) return;
+    p.commissionStatus = 'Paid';
+    STATE.commissionPayments ||= [];
+    STATE.commissionPayments.unshift({ id:`com-${Date.now()}`, praticaId:p.id, code:p.code, agentEmail:p.agentEmail, amount:Number(p.commission||0), date:today(), status:'Paid', by:STATE.session?.name });
+    saveState(); renderAll(); showToast('Commissione segnata come pagata.');
   }
 
   function initSignaturePad() {
@@ -1167,6 +1448,15 @@
       const backB = e.target.closest('[data-back-bangla]'); if (backB) backToBangla(backB.dataset.backBangla);
       const resetUserPass = e.target.closest('[data-reset-user-pass]'); if (resetUserPass) resetAdminUserPassword(resetUserPass.dataset.resetUserPass);
       const toggle = e.target.closest('[data-toggle-user]'); if (toggle) { const u = STATE.users.find(x => x.id === toggle.dataset.toggleUser); if (u && u.id !== STATE.session.id) { u.active = !u.active; window.CAF_CAE_API?.patch?.(`/api/admin/users/${encodeURIComponent(u.id)}`, { active: u.active }).catch(() => showToast('Backend non aggiornato per stato user.', 'warning')); saveState(); renderAll(); } }
+      const editProd = e.target.closest('[data-edit-product-price]'); if (editProd) editProductPrice(editProd.dataset.editProductPrice);
+      const agentCredit = e.target.closest('[data-admin-agent-credit]'); if (agentCredit) adminAgentCredit(agentCredit.dataset.adminAgentCredit);
+      const agentServices = e.target.closest('[data-admin-agent-services]'); if (agentServices) adminAgentServices(agentServices.dataset.adminAgentServices);
+      const blockUser = e.target.closest('[data-admin-block-user]'); if (blockUser) adminBlockUser(blockUser.dataset.adminBlockUser);
+      const paySalary = e.target.closest('[data-pay-salary]'); if (paySalary) adminPaySalary(paySalary.dataset.paySalary);
+      const payCommission = e.target.closest('[data-pay-commission]'); if (payCommission) adminPayCommission(payCommission.dataset.payCommission);
+      const delPromo = e.target.closest('[data-delete-promo]'); if (delPromo) { STATE.promotions = (STATE.promotions||[]).filter(x=>x.id!==delPromo.dataset.deletePromo); saveState(); renderAll(); }
+      const delPopup = e.target.closest('[data-delete-popup]'); if (delPopup) { STATE.popups = (STATE.popups||[]).filter(x=>x.id!==delPopup.dataset.deletePopup); saveState(); renderAll(); }
+      const closeComplaint = e.target.closest('[data-close-complaint]'); if (closeComplaint) { const c=(STATE.complaints||[]).find(x=>x.id===closeComplaint.dataset.closeComplaint); if(c)c.status='Closed'; saveState(); renderAll(); }
       const quad = e.target.closest('[data-quad]'); if (quad) { $$('.cgn-form-nav button').forEach(b => b.classList.remove('active')); quad.classList.add('active'); $$('.quad').forEach(q => q.classList.remove('active')); $(`#quad-${quad.dataset.quad}`).classList.add('active'); }
       const remove = e.target.closest('.remove-row'); if (remove) remove.closest('.cu-card,.family-card')?.remove();
     });
@@ -1179,6 +1469,12 @@
     $('#banglaOrderForm').addEventListener('submit', submitBanglaOrder);
     $('#adminUserForm').addEventListener('submit', submitAdminUser);
     $('#adminPraticaForm')?.addEventListener('submit', submitAdminPratica);
+    $('#adminManualSaleForm')?.addEventListener('submit', submitAdminManualSale);
+    $('#adminPromotionForm')?.addEventListener('submit', submitAdminPromotion);
+    $('#adminPopupForm')?.addEventListener('submit', submitAdminPopup);
+    $('#adminComplaintForm')?.addEventListener('submit', submitAdminComplaint);
+    $('#adminPortalSettingsForm')?.addEventListener('submit', submitAdminPortalSettings);
+    $('#adminSalesPeriod')?.addEventListener('change', renderAll);
     $('#clearSignatureBtn').addEventListener('click', () => { clearSignatureCanvas(); $('#signatureState').textContent = 'Non firmato'; });
     $('#agentDocUpload').addEventListener('change', () => { $('#uploadPreview').textContent = uploadedFiles().join(', ') || 'Nessun file caricato'; updateLivePreview(); });
     $('#t730_files').addEventListener('change', () => { $('#t730UploadPreview').textContent = uploadedFiles('#t730_files').join(', ') || 'Nessun documento'; });

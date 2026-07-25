@@ -56,7 +56,7 @@ const TABLES = [
   'agent_clients', 'agent_credit_transactions', 'agent_credit_requests', 'modify_requests', 'companies', 'invoices',
   'comm_sales', 'comm_f24', 'comm_employees', 'comm_documents', 'comm_deadlines', 'comm_backups', 'communications',
   'tickets', 'operational_notices', 'sources', 'team_daily_reports', 'receipts', 'audit_logs', 'client_versions', 'shopify_sync_logs',
-  'webhook_events'
+  'webhook_events', 'admin_product_prices', 'admin_promotions', 'admin_popups', 'admin_complaints', 'admin_manual_sales', 'salary_payments', 'commission_payments', 'portal_settings'
 ];
 for (const t of TABLES) memory.set(t, []);
 
@@ -194,7 +194,7 @@ const praticaSchema = z.object({ serviceTitle: z.string().optional(), service_ti
 const companySchema = z.object({ name: z.string().min(1), vat: z.string().optional(), email: z.string().email().optional().or(z.literal('')), phone: z.string().optional() }).passthrough();
 
 // Health and live state snapshot for all dashboards.
-app.get('/api/health', asyncHandler(async (_req, res) => ok(res, { service: 'CAF CAE full dashboard backend v13 clean base', database: hasSupabase ? 'supabase' : 'memory-fallback', time: now() })));
+app.get('/api/health', asyncHandler(async (_req, res) => ok(res, { service: 'CAF CAE full dashboard backend v15 admin pro', database: hasSupabase ? 'supabase' : 'memory-fallback', time: now() })));
 
 app.get('/api/live/version', requireAuth, asyncHandler(async (req, res) => {
   const key = `${req.query.role || 'all'}:${req.query.email || 'all'}`;
@@ -553,6 +553,38 @@ app.get('/api/admin/dashboard', requireAuth, requireRole('admin'), asyncHandler(
   const [pratiche, companies, tickets, credit, sales] = await Promise.all([dbSelect('pratiche'), dbSelect('companies'), dbSelect('tickets'), dbSelect('agent_credit_transactions'), dbSelect('comm_sales')]);
   ok(res, { stats: { pratiche: pratiche.length, companies: companies.length, tickets: tickets.length, credit: credit.reduce((s, t) => s + (t.type === 'plus' ? safeNumber(t.amount) : -safeNumber(t.amount)), 0), sales: sales.reduce((s, x) => s + safeNumber(x.card || x.cash || x.total || x.payload?.total), 0) } });
 }));
+
+// Admin Pro v15 generic data modules (future database-ready storage).
+const adminDataTables = {
+  products: 'admin_product_prices',
+  promotions: 'admin_promotions',
+  popups: 'admin_popups',
+  complaints: 'admin_complaints',
+  sales: 'admin_manual_sales',
+  salaries: 'salary_payments',
+  commissions: 'commission_payments',
+  settings: 'portal_settings'
+};
+app.get('/api/admin/data/:type', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const table = adminDataTables[req.params.type];
+  if (!table) return bad(res, 404, 'Modulo admin non trovato.');
+  ok(res, { items: await dbSelect(table, {}, { order: 'updated_at' }) });
+}));
+app.post('/api/admin/data/:type', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const table = adminDataTables[req.params.type];
+  if (!table) return bad(res, 404, 'Modulo admin non trovato.');
+  const item = await dbInsert(table, { ...req.body, created_by: req.user.email || req.user.username });
+  await audit('admin_data_created', table, item.id, null, req.user, null, item, req);
+  ok(res, { item });
+}));
+app.patch('/api/admin/data/:type/:id', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const table = adminDataTables[req.params.type];
+  if (!table) return bad(res, 404, 'Modulo admin non trovato.');
+  const item = await dbUpdate(table, req.params.id, req.body || {});
+  await audit('admin_data_updated', table, item.id, null, req.user, null, item, req);
+  ok(res, { item });
+}));
+
 app.get('/api/tickets', asyncHandler(async (req, res) => {
   const filter = req.query.created_by ? { created_by: req.query.created_by } : {};
   ok(res, { tickets: await dbSelect('tickets', filter, { order: 'created_at' }) });
@@ -630,4 +662,4 @@ app.use((err, req, res, _next) => {
   bad(res, 500, err.message || 'Errore server.');
 });
 
-app.listen(PORT, () => console.log(`CAF CAE full dashboard backend v13 clean base running on port ${PORT} (${hasSupabase ? 'Supabase' : 'memory fallback'})`));
+app.listen(PORT, () => console.log(`CAF CAE full dashboard backend v15 admin pro running on port ${PORT} (${hasSupabase ? 'Supabase' : 'memory fallback'})`));
