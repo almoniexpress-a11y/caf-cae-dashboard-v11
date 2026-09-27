@@ -178,6 +178,16 @@
     localStorage.setItem('caf_cae_v12_state', JSON.stringify(copy));
     if (window.CAF_CAE_API?.enabled?.() && STATE.session) {
       window.CAF_CAE_API.pushSnapshot(STATE, STATE.session).catch(() => showToast('Offline backend: salvato localmente.', 'warning'));
+
+      // v15 sync hotfix: all operational work (orders/pratiche, clients, reports, tickets, sales)
+      // must be saved in one shared snapshot, otherwise an order created by Agent remains visible
+      // only inside the Agent account and Team/Admin cannot see it.
+      window.CAF_CAE_API.pushSnapshot(sharedOpsState(), {
+        role: 'ops',
+        email: 'all',
+        name: STATE.session.name || STATE.session.email || 'CAF CAE'
+      }).catch(() => {});
+
       if (STATE.session.role === 'admin') {
         window.CAF_CAE_API.pushSnapshot(sharedAdminState(), { role: 'all', email: 'all', name: STATE.session.name || 'Admin' }).catch(() => {});
       }
@@ -205,6 +215,54 @@
     });
   }
 
+  function sharedOpsState() {
+    return {
+      pratiche: STATE.pratiche || [],
+      clients: STATE.clients || [],
+      companies: STATE.companies || [],
+      invoices: STATE.invoices || [],
+      communications: STATE.communications || [],
+      tickets: STATE.tickets || [],
+      dailyReports: STATE.dailyReports || [],
+      wallet: STATE.wallet || [],
+      creditRequests: STATE.creditRequests || [],
+      modifyRequests: STATE.modifyRequests || [],
+      complaints: STATE.complaints || [],
+      adminSales: STATE.adminSales || [],
+      salaryPayments: STATE.salaryPayments || [],
+      commissionPayments: STATE.commissionPayments || [],
+      updatedAt: today()
+    };
+  }
+
+  function mergeRecordArrays(local = [], incoming = []) {
+    const out = [];
+    const seen = new Set();
+    [...(incoming || []), ...(local || [])].forEach(item => {
+      if (!item || typeof item !== 'object') return;
+      const key = item.id || item.code || `${item.email || ''}-${item.username || ''}-${item.createdAt || ''}-${item.date || ''}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(item);
+    });
+    return out;
+  }
+
+  function mergeOpsState(shared = {}) {
+    ['pratiche','clients','companies','invoices','communications','tickets','dailyReports','wallet','creditRequests','modifyRequests','complaints','adminSales','salaryPayments','commissionPayments'].forEach(k => {
+      if (Array.isArray(shared[k])) STATE[k] = mergeRecordArrays(STATE[k], shared[k]);
+    });
+    normalizePratiche();
+  }
+
+  async function pullOpsState() {
+    if (!window.CAF_CAE_API?.enabled?.() || !STATE.session) return;
+    try {
+      const ops = await window.CAF_CAE_API.get('/api/live/state?role=ops&email=all');
+      if (ops?.ok && ops.state) mergeOpsState(ops.state);
+    } catch (_) {}
+  }
+
   async function pullSharedAdminState() {
     if (!window.CAF_CAE_API?.enabled?.() || !STATE.session) return;
     try {
@@ -226,6 +284,7 @@
         STATE.signature730DataUrl = '';
         STATE.banglaSignatureDataUrl = '';
         normalizePratiche();
+        await pullOpsState();
         await pullSharedAdminState();
         localStorage.setItem('caf_cae_v12_state', JSON.stringify({ ...STATE, session: null, chartRefs: {} }));
         setTimeout(() => { renderAll(); showToast(reason === 'login' ? 'Dati live caricati dal backend.' : 'Dashboard aggiornata in tempo reale.'); }, 80);
