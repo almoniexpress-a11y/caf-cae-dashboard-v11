@@ -91,3 +91,7 @@ This v11 package gives the live backend foundation for the full dashboard. The n
 
 ## v17 Agent CGN-style
 Added CGN-style agent portal structure based on uploaded screen recording while keeping CAF CAE branding and secure backend.
+
+
+## v19 update
+CAF CAE own service catalogue, appointment/call intake and improved blue header/logo.

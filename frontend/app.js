@@ -146,6 +146,7 @@
     STATE.commissionPayments ||= [];
     STATE.adminSales ||= [];
     STATE.dashboardStructures ||= {};
+    STATE.appointments ||= [];
     STATE.portalSettings ||= {};
     STATE.portalSettings.headerTheme ||= 'cgn-blue';
     STATE.portalSettings.teamHeaderText ||= 'CAF CAE operativo';
@@ -2000,58 +2001,13 @@
 
   /* ========================= v17 Agent CGN-style from user recording ========================= */
   function v17CgnServiceSections(){
-    return [
-      { title:'Servizi per i Privati', color:'privati', items:[
-        ['730','730','fa-file-invoice-dollar','Attivo'],
-        ['isee-ordinario','ISEE','fa-people-roof','Attivo'],
-        ['richieste-enti','Richieste Enti','fa-landmark','Da attivare'],
-        ['naspi','Disoccupazioni','fa-briefcase','Attivo'],
-        ['adi','Assegno di Inclusione e Prestazioni','fa-hand-holding-heart','Attivo'],
-        ['assegno-unico-universale','Assegni Familiari','fa-children','Attivo'],
-        ['red','RED','fa-file-signature','Attivo'],
-        ['invalidita-civile','Invalidità Civile e Assegno Sociale','fa-wheelchair','Attivo'],
-        ['imu-calcolo','IMU','fa-house-chimney','Attivo'],
-        ['visure-catastali','Visure Catastali','fa-map-location-dot','Attivo'],
-        ['registrazione-contratto-affitto','Contratti di locazione','fa-file-contract','Attivo'],
-        ['visure-ipocatastali','Visure Ipocatastali Certificate','fa-building-columns','Da attivare'],
-        ['successione','Successioni e Volture','fa-scale-balanced','Attivo'],
-        ['pratiche-colf-badanti','Colf e Badanti','fa-user-nurse','Attivo'],
-        ['spid-cie','SPID','fa-id-card','Attivo']
-      ]},
-      { title:'Servizi per le Aziende', color:'aziende', items:[
-        ['contabilita','Contabilità','fa-calculator','Da attivare'],
-        ['fatturazione','Fatturazione','fa-receipt','Attivazione in corso'],
-        ['dichiarazioni-comunicazioni-fiscali','Dichiarazioni e Comunicazioni Fiscali','fa-file-circle-check','Attivo'],
-        ['invio-telematico','Invio Telematico','fa-paper-plane','Attivazione in corso'],
-        ['bilancio-360','Bilancio 360°','fa-chart-pie','Attivazione in corso'],
-        ['f24-compilazione','F24','fa-money-check-dollar','Attivo'],
-        ['sportello-cciaa','Sportello CCIAA','fa-building','Attivo'],
-        ['comunicazione-unica-cciaa','Comunicazione Unica CCIAA','fa-diagram-project','Attivo'],
-        ['deposito-bilancio','Deposito Bilancio','fa-folder-open','Attivo'],
-        ['revisione-legale-vigilanza','Revisione Legale e Vigilanza','fa-magnifying-glass-chart','Da attivare'],
-        ['pec-firma-digitale','CGN Firme PEC e SPID','fa-signature','Attivo'],
-        ['consulenza-esg','Consulenza ESG','fa-leaf','Da attivare'],
-        ['ricerca-bandi','Ricerca Bandi','fa-bullhorn','Da attivare'],
-        ['firme-contratti','Firme e Contratti','fa-pen-nib','Da attivare'],
-        ['firma-digitale','Firma Digitale','fa-certificate','Da attivare'],
-        ['posta-elettronica-certificata','Posta Elettronica Certificata','fa-envelope-circle-check','Da attivare']
-      ]},
-      { title:'Servizi per lo Studio', color:'studio', items:[
-        ['antiriciclaggio','Antiriciclaggio','fa-shield-halved','Da attivare'],
-        ['chiara','Chiara','fa-comments','Attivo'],
-        ['privacy-gdpr','Privacy GDPR','fa-user-shield','Da attivare'],
-        ['conservazione-norma','Conservazione a norma','fa-box-archive','Da attivare'],
-        ['bonus-affitto','Bonus','fa-gift','Attivo'],
-        ['service-pratiche','Service Pratiche','fa-list-check','Attivo'],
-        ['pratiche-colf-badanti','Service Pratiche Colf e Badanti','fa-user-nurse','Attivo'],
-        ['cgn-pos','CGN POS','fa-credit-card','Attivo'],
-        ['scanner-documenti','Scanner CAF CAE','fa-print','Attivo']
-      ]},
-      { title:'Infrastruttura Tecnologica', color:'infra', items:[
-        ['firma-elettronica-avanzata','Firma Elettronica Avanzata','fa-fingerprint','Attivo'],
-        ['pagamenti-digitali','Pagamenti Digitali','fa-wallet','Attivo']
-      ]}
-    ];
+    const groups = (CATALOG.agentServiceGroups || []).filter(g => (g.services || []).length);
+    return groups.map((g, idx) => ({
+      title: g.group || `Gruppo ${idx + 1}`,
+      color: g.color || ['blue','green','orange','red','purple','cyan'][idx % 6],
+      icon: g.icon || 'fa-folder-open',
+      items: (g.services || []).map(s => [s.key, s.title, s.icon || g.icon || v19IconForService(s), s.enabled === false ? 'Da attivare' : 'Attivo'])
+    }));
   }
   function v17ServiceStatusPill(status){
     const cls = status === 'Attivo' ? 'ok' : status === 'Attivazione in corso' ? 'warn' : 'muted';
@@ -2105,9 +2061,9 @@
     if(!$('#agent-cgn-platform')){
       $('#agent-home')?.insertAdjacentHTML('afterend', `
         <div id="agent-cgn-platform" class="agent-tab">
-          <section class="v17-cgn-page-head"><div><h2>Piattaforma CAF CAE</h2><p>Catalogo servizi organizzato come il modello CGN: scegli il servizio e compila la domanda guidata.</p></div><div class="v17-head-actions"><button class="btn blue" data-service-key="730"><i class="fa-solid fa-plus"></i> Nuovo 730</button><button class="btn orange" data-service-key="isee-ordinario"><i class="fa-solid fa-plus"></i> Nuovo ISEE</button></div></section>
+          <section class="v17-cgn-page-head"><div><h2>Piattaforma CAF CAE</h2><p>Catalogo servizi CAF CAE: scegli solo i servizi abilitati dall'admin e compila la domanda guidata.</p></div><div class="v17-head-actions"><button class="btn blue" data-service-key="730"><i class="fa-solid fa-plus"></i> Nuovo 730</button><button class="btn orange" data-service-key="isee-ordinario"><i class="fa-solid fa-plus"></i> Nuovo ISEE</button></div></section>
           ${v17CgnCatalogHtml()}
-          <section class="white-card v17-cgn-notes"><div class="card-head"><h3>Struttura presa dal video CGN</h3><span class="meta">CAF CAE branding + flusso operativo</span></div><div class="v17-note-grid"><div class="v17-note"><b>Workflow a scheda cliente</b><span>Prima servizio, poi cliente, dati specifici, documenti, delega e ricevuta.</span></div><div class="v17-note"><b>Catalogo a colonne</b><span>Privati, Aziende, Studio e Infrastruttura.</span></div><div class="v17-note"><b>Stati pratica</b><span>Nuova, documenti mancanti, verifica, Italy, completata.</span></div><div class="v17-note"><b>Ricevute ufficiali</b><span>Protocollo CAFCAE, dati cliente e fascicolo.</span></div></div></section>
+          <section class="white-card v17-cgn-notes"><div class="card-head"><h3>Struttura servizi CAF CAE</h3><span class="meta">CAF CAE live system</span></div><div class="v17-note-grid"><div class="v17-note"><b>Workflow a scheda cliente</b><span>Prima servizio, poi cliente, dati specifici, documenti, delega e ricevuta.</span></div><div class="v17-note"><b>Catalogo completo CAF CAE</b><span>CAF/Comune, Patronato, Immigrazione, Flussi, Azienda e Academy.</span></div><div class="v17-note"><b>Stati pratica</b><span>Nuova, documenti mancanti, verifica, Italy, completata.</span></div><div class="v17-note"><b>Ricevute ufficiali</b><span>Protocollo CAFCAE, dati cliente e fascicolo.</span></div></div></section>
         </div>`);
     }
     const formCard = $('#agent-new .form-card');
@@ -2128,6 +2084,147 @@
   const v17_oldRenderAgentDashboard = renderAgentDashboard;
   renderAgentDashboard = function(){ v17_oldRenderAgentDashboard(); v17EnsureAgentCgnShell(); v17ApplyCgnFieldHints(); };
 
+
+
+
+/* v19 CAF CAE own catalogue + appointment system + header/logo polish */
+function v19IconForService(s = {}) {
+  const key = String(s.key || s.special || '').toLowerCase();
+  const title = String(s.title || '').toLowerCase();
+  if (key.includes('isee') || title.includes('isee')) return 'fa-people-roof';
+  if (key.includes('730') || title.includes('730')) return 'fa-file-invoice-dollar';
+  if (key.includes('naspi') || title.includes('disoccup')) return 'fa-briefcase';
+  if (key.includes('permesso') || key.includes('cittadinanza') || title.includes('soggiorno')) return 'fa-passport';
+  if (key.includes('flussi')) return 'fa-plane-arrival';
+  if (key.includes('f24')) return 'fa-money-check-dollar';
+  if (key.includes('bonus')) return 'fa-gift';
+  if (key.includes('spid') || key.includes('cie')) return 'fa-id-card';
+  if (key.includes('firma') || key.includes('pec')) return 'fa-signature';
+  if (key.includes('azienda') || key.includes('partita') || title.includes('piva')) return 'fa-building';
+  if (key.includes('corso') || key.includes('academy') || key.includes('esame')) return 'fa-graduation-cap';
+  if (key.includes('affitto') || key.includes('residenza')) return 'fa-house';
+  return 'fa-folder-open';
+}
+
+function v19EnsureAppointments() {
+  STATE.appointments ||= [];
+}
+
+function v19RoleLabel(role){
+  return ({ admin:'Admin', agent:'Agente', bangla:'Team Bangla', italy:'Team Italy', commercialista:'Commercialista' })[role] || role || 'Team';
+}
+
+function v19AppointmentForm(prefix, role){
+  const serviceOptions = allServicesFlat().slice(0, 90).map(s => `<option value="${safe(s.key)}">${safe(s.group)} › ${safe(s.title)}</option>`).join('');
+  const assign = role === 'admin'
+    ? `<label>Assegna a <select id="${prefix}ApptAssign"><option value="admin">Admin</option><option value="bangla">Team Bangla</option><option value="italy">Team Italy</option><option value="commercialista">Commercialista</option><option value="agent">Agente</option></select></label>`
+    : `<input id="${prefix}ApptAssign" type="hidden" value="${safe(role)}" />`;
+  return `<section class="white-card v19-appointment-card" id="${prefix}AppointmentCard">
+    <div class="card-head"><div><h3><i class="fa-solid fa-calendar-plus"></i> Appuntamenti / chiamate</h3><p class="meta">Crea appuntamento quando chiama un cliente: resta visibile ad Admin, Team Bangla e Team Italy.</p></div><span class="chip green" id="${prefix}ApptCount">0 oggi</span></div>
+    <form id="${prefix}AppointmentForm" class="form-grid cols-4 v19-appointment-form" data-appt-prefix="${prefix}" data-appt-role="${safe(role)}">
+      <label>Cliente <input id="${prefix}ApptClient" placeholder="Nome cliente" required></label>
+      <label>Telefono/WhatsApp <input id="${prefix}ApptPhone" placeholder="+39..." required></label>
+      <label>Data <input id="${prefix}ApptDate" type="date" value="${today()}" required></label>
+      <label>Ora <input id="${prefix}ApptTime" type="time"></label>
+      <label>Servizio <select id="${prefix}ApptService"><option value="">Da decidere</option>${serviceOptions}</select></label>
+      ${assign}
+      <label>Priorità <select id="${prefix}ApptPriority"><option>Normale</option><option>Urgente</option><option>Richiamare oggi</option></select></label>
+      <label>Stato <select id="${prefix}ApptStatus"><option>Programmato</option><option>Da richiamare</option><option>Completato</option><option>Annullato</option></select></label>
+      <label class="form-span">Note chiamata / richiesta <textarea id="${prefix}ApptNote" placeholder="Cosa vuole il cliente? Documenti, scadenza, pratica..."></textarea></label>
+      <button class="btn orange form-span" type="submit"><i class="fa-solid fa-calendar-check"></i> Salva appuntamento</button>
+    </form>
+    <div class="v19-appointment-list" id="${prefix}AppointmentList"></div>
+  </section>`;
+}
+
+function v19AppointmentVisible(list, role){
+  if(role === 'admin') return list;
+  return list.filter(a => a.assignTo === role || a.createdByRole === role || (role === 'bangla' && a.assignTo === 'team_bangla') || (role === 'italy' && a.assignTo === 'team_italy'));
+}
+
+function v19RenderAppointmentList(prefix, role){
+  v19EnsureAppointments();
+  const box = $(`#${prefix}AppointmentList`);
+  if(!box) return;
+  const list = v19AppointmentVisible(STATE.appointments || [], role).slice().sort((a,b)=>String(`${a.date} ${a.time||''}`).localeCompare(String(`${b.date} ${b.time||''}`))).slice(0, 12);
+  const todayCount = list.filter(a => a.date === today() && a.status !== 'Annullato').length;
+  const count = $(`#${prefix}ApptCount`); if(count) count.textContent = `${todayCount} oggi`;
+  box.innerHTML = list.map(a => `<div class="flat-item v19-appt-row ${a.priority === 'Urgente' ? 'urgent' : ''}">
+    <div><div class="title">${safe(a.date)} ${safe(a.time || '')} · ${safe(a.client)}</div>
+    <div class="meta"><b>${safe(a.phone)}</b> · ${safe(a.serviceTitle || 'Da decidere')} · ${safe(v19RoleLabel(a.assignTo))}<br>${safe(a.note || '')}</div></div>
+    <div class="v19-appt-actions"><span class="chip ${a.status === 'Completato' ? 'green' : a.priority === 'Urgente' ? 'red' : 'orange'}">${safe(a.status)}</span><button class="btn light" data-appt-done="${safe(a.id)}">Fatto</button></div>
+  </div>`).join('') || emptyFlat('Nessun appuntamento', 'Quando ricevi chiamate o WhatsApp, salva qui la richiesta.');
+}
+
+function v19SubmitAppointment(e){
+  const form = e.target.closest('form[data-appt-prefix]');
+  if(!form) return;
+  e.preventDefault();
+  v19EnsureAppointments();
+  const p = form.dataset.apptPrefix;
+  const serviceKey = $(`#${p}ApptService`)?.value || '';
+  const svc = serviceByKey(serviceKey) || {};
+  const item = {
+    id:`appt-${Date.now()}`,
+    client:$(`#${p}ApptClient`)?.value || '',
+    phone:$(`#${p}ApptPhone`)?.value || '',
+    date:$(`#${p}ApptDate`)?.value || today(),
+    time:$(`#${p}ApptTime`)?.value || '',
+    serviceKey,
+    serviceTitle: svc.title || 'Da decidere',
+    assignTo:$(`#${p}ApptAssign`)?.value || form.dataset.apptRole || STATE.session?.role,
+    priority:$(`#${p}ApptPriority`)?.value || 'Normale',
+    status:$(`#${p}ApptStatus`)?.value || 'Programmato',
+    note:$(`#${p}ApptNote`)?.value || '',
+    createdBy: STATE.session?.name,
+    createdByRole: STATE.session?.role,
+    createdAt: new Date().toISOString()
+  };
+  if(!item.client || !item.phone) return showToast('Inserisci cliente e telefono.', 'warning');
+  STATE.appointments.unshift(item);
+  saveState();
+  form.reset();
+  const date = $(`#${p}ApptDate`); if(date) date.value = today();
+  renderAll();
+  showToast('Appuntamento salvato.');
+}
+
+function v19InjectAppointments(){
+  v19EnsureAppointments();
+  const inserts = [
+    ['admin-home','admin','adminHome'],
+    ['bangla-home','bangla','banglaHome'],
+    ['italy-home','italy','italyHome'],
+    ['agent-home','agent','agentHome']
+  ];
+  inserts.forEach(([containerId, role, prefix]) => {
+    const el = $(`#${containerId}`);
+    if(el && !$(`#${prefix}AppointmentCard`)) {
+      const target = el.querySelector('.kpi-row') || el.firstElementChild;
+      if(target) target.insertAdjacentHTML('afterend', v19AppointmentForm(prefix, role));
+      else el.insertAdjacentHTML('afterbegin', v19AppointmentForm(prefix, role));
+    }
+    v19RenderAppointmentList(prefix, role);
+  });
+}
+
+document.body.addEventListener('submit', v19SubmitAppointment);
+document.body.addEventListener('click', e => {
+  const btn = e.target.closest('[data-appt-done]');
+  if(btn){
+    const a = (STATE.appointments || []).find(x => x.id === btn.dataset.apptDone);
+    if(a){ a.status = 'Completato'; a.completedAt = new Date().toISOString(); saveState(); renderAll(); showToast('Appuntamento completato.'); }
+  }
+});
+
+const v19_oldRenderAgentDashboard = renderAgentDashboard;
+renderAgentDashboard = function(){ v19_oldRenderAgentDashboard(); v19InjectAppointments(); };
+const v19_oldRenderBangla = renderBangla;
+renderBangla = function(){ v19_oldRenderBangla(); v19InjectAppointments(); };
+const v19_oldRenderItaly = renderItaly;
+renderItaly = function(){ v19_oldRenderItaly(); v19InjectAppointments(); };
+const v19_oldRenderAdmin = renderAdmin;
+renderAdmin = function(){ v19_oldRenderAdmin(); v19InjectAppointments(); };
 
   async function boot() {
     seed();
