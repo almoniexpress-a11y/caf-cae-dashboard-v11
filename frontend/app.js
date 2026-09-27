@@ -1899,6 +1899,227 @@
   document.addEventListener('submit',e=>{ if(e.target.id==='commSalesForm') commSubmitSales(e); if(e.target.id==='commF24Form') commSubmitF24(e); if(e.target.id==='commEmployeeForm') commSubmitEmployee(e); if(e.target.id==='commDocumentForm') commSubmitDocument(e); if(e.target.id==='commMessageForm') commSubmitMessage(e); if(e.target.id==='commDeadlineForm') commSubmitDeadline(e); if(e.target.id==='commBackupForm') commSubmitBackup(e); });
   ['input','change'].forEach(ev=>document.addEventListener(ev,e=>{ if(e.target.closest('#companyForm')) commUpdateWizardPreview(); if(e.target.id==='coDocs') commFilePreviewChange('#coDocs','#coDocsPreview'); if(e.target.id==='docFile') commFilePreviewChange('#docFile','#docFilePreview'); if(e.target.id==='commClientSearch'||e.target.id==='commClientStatusFilter'||e.target.id==='commPlanFilter') renderCommClients(); }));
 
+
+
+  /* ========================= v16 Agent Pro - CGN-style portal upgrade ========================= */
+  function v16AgentStats(){
+    const list=agentPratiche();
+    const todayStr=today();
+    const month=todayStr.slice(0,7);
+    const byStatus=list.reduce((a,p)=>{a[p.status]=(a[p.status]||0)+1; return a;},{});
+    return {
+      list,
+      todayCreated:list.filter(p=>(p.createdAt||'').slice(0,10)===todayStr).length,
+      monthCreated:list.filter(p=>(p.createdAt||'').slice(0,7)===month).length,
+      ready:list.filter(p=>p.documentStatus==='Documenti ricevuti'||p.status==='In verifica').length,
+      missing:list.filter(p=>(p.missingDocs||[]).length||p.status==='Documenti mancanti').length,
+      completed:list.filter(p=>p.status==='Completata').length,
+      pendingCommission:list.reduce((sum,p)=>sum+(p.commissionStatus==='Paid'?0:Number(p.commission||0)),0),
+      byStatus
+    };
+  }
+  function v16ServiceShortcutHtml(){
+    const keys=['730','isee-ordinario','isee-universita','isee-corrente','naspi','dimissioni','assegno-unico-universale','permesso-rinnovo','carta-soggiorno','cittadinanza-italiana','f24-compilazione','apertura-partita-iva'];
+    return keys.map(k=>{
+      const s=serviceByKey(k); if(!s||!canUseService(s.key)) return '';
+      const ag=v9AgencyForService(s);
+      return `<button class="v16-service-tile" data-service-key="${safe(s.key)}"><span class="v16-tile-icon ${ag.key}"><i class="fa-solid ${ag.icon}"></i></span><b>${safe(s.title)}</b><small>${safe(s.group)} · ${money(s.cost)}</small></button>`;
+    }).join('');
+  }
+  function v16EnsureAgentShell(){
+    const home=$('#agent-home'); if(!home||STATE.session?.role!=='agent') return;
+    if(!$('#agentProHero')){
+      home.insertAdjacentHTML('afterbegin',`<section id="agentProHero" class="v16-agent-hero">
+        <div class="v16-hero-left"><span class="v16-cgn-chip">CAF CAE AGENT PRO</span><h2>Portale operativo agente</h2><p>Domande CAF, Patronato, Immigrazione, Azienda e Academy con workflow Agent → Team Bangla → Team Italy → ricevuta finale.</p></div>
+        <div class="v16-hero-actions"><button class="btn orange" data-service-key="730"><i class="fa-solid fa-file-invoice-dollar"></i> Nuovo 730</button><button class="btn blue" data-service-key="isee-ordinario"><i class="fa-solid fa-calculator"></i> Nuovo ISEE</button><button class="btn light" data-service-key="naspi"><i class="fa-solid fa-building-columns"></i> NASpI</button></div>
+      </section>
+      <section id="agentProKpi" class="v16-kpi-strip"></section>
+      <section class="white-card v16-quick-services"><div class="card-head"><h3>Domande rapide tipo CGN</h3><span class="meta">Seleziona servizio, compila dati, firma delega e invia al team</span></div><div id="agentProServiceTiles" class="v16-service-grid"></div></section>
+      <section class="grid-2 v16-agent-workflow"><div class="white-card"><div class="card-head"><h3>Pipeline pratiche</h3><span class="meta">controllo stato live</span></div><div id="agentPipelineBoard" class="v16-pipeline"></div></div><div class="white-card"><div class="card-head"><h3>Ricevute e documenti</h3><button class="link-btn" data-agent-tab="agent-pratiche">apri pratiche</button></div><div id="agentReceiptBoard" class="flat-list compact"></div></div></section>`);
+    }
+  }
+  function v16RenderAgentPro(){
+    if(STATE.session?.role!=='agent') return;
+    v16EnsureAgentShell();
+    const st=v16AgentStats();
+    const kpi=$('#agentProKpi'); if(kpi) kpi.innerHTML=`
+      <div class="v16-metric"><span>Oggi</span><b>${st.todayCreated}</b><small>domande create</small></div>
+      <div class="v16-metric"><span>Mese</span><b>${st.monthCreated}</b><small>domande create</small></div>
+      <div class="v16-metric"><span>Pronte</span><b>${st.ready}</b><small>docs ricevuti / Italy</small></div>
+      <div class="v16-metric warn"><span>Mancanti</span><b>${st.missing}</b><small>da completare</small></div>
+      <div class="v16-metric green"><span>Commissioni</span><b>${money(st.pendingCommission)}</b><small>pending</small></div>`;
+    const tiles=$('#agentProServiceTiles'); if(tiles) tiles.innerHTML=v16ServiceShortcutHtml();
+    const pipe=$('#agentPipelineBoard'); if(pipe){
+      const groups=[['Nuova','Agent'],['Documenti mancanti','Mancanti'],['In verifica','Italy'],['Completata','Completata']];
+      pipe.innerHTML=groups.map(([status,label])=>{
+        const rows=st.list.filter(p=>p.status===status).slice(0,4);
+        return `<div class="v16-pipe-col"><h4>${label}<span>${st.byStatus[status]||0}</span></h4>${rows.map(p=>`<button class="v16-pipe-item" data-detail="${p.id}"><b>${safe(p.code)}</b><small>${safe(fullName(p.client))} · ${safe(p.serviceTitle)}</small></button>`).join('')||'<div class="v16-empty-mini">Nessuna</div>'}</div>`;
+      }).join('');
+    }
+    const rb=$('#agentReceiptBoard'); if(rb){
+      const rows=st.list.slice(0,5);
+      rb.innerHTML=rows.map(p=>`<div class="flat-item"><div><div class="title">${safe(p.code)} · ${safe(p.serviceTitle)}</div><div class="meta">Ricevuta: ${safe(v16ReceiptNo(p))} · ${safe(p.status)}</div></div><button class="btn light" data-download-doc="ricevuta-${p.id}">Ricevuta</button></div>`).join('')||emptyFlat('Nessuna ricevuta','Crea una domanda per generare ricevuta ufficiale.');
+    }
+  }
+  const v16_oldRenderAgentDashboard = renderAgentDashboard;
+  renderAgentDashboard = function(){ v16_oldRenderAgentDashboard(); v16RenderAgentPro(); };
+
+  function v16ReceiptNo(p){
+    if(!p) return 'BOZZA';
+    if(!p.receiptNo){
+      const seq=String((STATE.pratiche||[]).findIndex(x=>x.id===p.id)+1 || (STATE.pratiche||[]).length+1).padStart(5,'0');
+      p.receiptNo=`CAFCAE-${(p.createdAt||today()).slice(0,4)}-${seq}`;
+    }
+    return p.receiptNo;
+  }
+  function v16DocumentRows(obj){
+    return Object.entries(obj||{}).filter(([_,v])=>v!==undefined&&v!==null&&String(v).trim()!=='').map(([k,v])=>`<tr><td>${safe(k)}</td><td>${safe(v)}</td></tr>`).join('');
+  }
+  function v16OfficialDoc(type, pratica){
+    let p=pratica;
+    const m=String(type||'').match(/(delega|ricevuta|fascicolo-pratica)-(.+)/);
+    if(!p&&m) p=STATE.pratiche.find(x=>x.id===m[2])||STATE.pratiche.find(x=>x.code===m[2]);
+    if(!p) return v16_oldDocHtml(type, pratica);
+    const client=p.client||{}; const receiptNo=v16ReceiptNo(p); const isReceipt=String(type).includes('ricevuta'); const isDelegation=String(type).includes('delega');
+    const title=isReceipt?'RICEVUTA UFFICIALE CONSEGNA DOCUMENTI':isDelegation?'DELEGA E MANDATO PROFESSIONALE':'FASCICOLO PRATICA CAF CAE';
+    const docs=(p.uploads||[]).map(x=>`<li>${safe(x)}</li>`).join('')||'<li>Nessun file caricato nel browser; documenti indicati da checklist.</li>';
+    const dataRows=v16DocumentRows(p.serviceData);
+    const sig=p.signatureDataUrl||p.signature730DataUrl||STATE.signatureDataUrl||STATE.signature730DataUrl||'';
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${title} ${safe(p.code)}</title><style>
+      body{font-family:Arial,Helvetica,sans-serif;color:#0b1b33;margin:0;background:#eef4f8}.page{max-width:900px;margin:22px auto;background:#fff;padding:34px;border:1px solid #d8e2ee}.top{display:flex;justify-content:space-between;gap:20px;border-bottom:5px solid #1f78a8;padding-bottom:14px}.brand{display:flex;gap:14px;align-items:center}.brand img{height:54px}.brand h1{margin:0;color:#1f78a8;font-size:28px}.brand p{margin:2px 0;color:#64748b}.proto{text-align:right}.proto b{display:block;font-size:18px;color:#0b1b33}.stamp{border:2px solid #1f78a8;border-radius:12px;padding:8px 12px;color:#1f78a8;font-weight:800;display:inline-block;margin-top:8px}.bar{height:46px;background:repeating-linear-gradient(90deg,#111 0 3px,#fff 3px 7px,#111 7px 9px,#fff 9px 14px);opacity:.65;border-radius:4px;margin-top:10px}.h{background:#eaf6ff;border-left:5px solid #1f78a8;padding:12px 14px;margin:20px 0 12px;font-size:20px;font-weight:900}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid #e5edf5;padding:9px}.row span{color:#64748b}.box{border:1px solid #dce7f2;border-radius:12px;padding:14px;margin:14px 0}.docs li{margin:6px 0}.tbl{width:100%;border-collapse:collapse}.tbl td{border:1px solid #e5edf5;padding:8px}.tbl td:first-child{background:#f8fbfe;font-weight:700;width:36%}.notice{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:12px;color:#7c2d12}.sig{margin-top:26px;display:grid;grid-template-columns:1fr 1fr;gap:25px}.sigbox{height:120px;border-bottom:2px solid #0b1b33;display:flex;align-items:flex-end}.sigbox img{max-height:100px;max-width:330px}.footer{font-size:12px;color:#64748b;margin-top:22px;border-top:1px solid #e5edf5;padding-top:12px}.pill{display:inline-block;background:#dbeafe;color:#1e40af;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800}@media print{body{background:#fff}.page{margin:0;border:0}.no-print{display:none}}
+      </style></head><body><div class="page"><div class="top"><div class="brand"><img src="assets/caf-cae-logo.png" alt="CAF CAE"><div><h1>CAF CAE</h1><p>LA TUA PRATICA, LA NOSTRA PRIORITÀ.</p><p>Documento generato dal portale operativo CAF CAE</p></div></div><div class="proto"><span class="pill">${safe(p.agency||'CAF / Patronato')}</span><b>${safe(receiptNo)}</b><small>Data: ${safe(today())}</small><div class="stamp">${isReceipt?'RICEVUTA':'MANDATO'}</div><div class="bar"></div></div></div><div class="h">${title}</div><div class="grid"><div class="box"><div class="row"><span>Codice pratica</span><b>${safe(p.code)}</b></div><div class="row"><span>Servizio</span><b>${safe(p.serviceTitle)}</b></div><div class="row"><span>Stato</span><b>${safe(p.status)}</b></div><div class="row"><span>Pagamento</span><b>${safe(p.paymentMode||p.paymentStatus||'Credito agente')}</b></div></div><div class="box"><div class="row"><span>Cliente</span><b>${safe(fullName(client))}</b></div><div class="row"><span>Codice fiscale</span><b>${safe(client.cf||'--')}</b></div><div class="row"><span>Telefono</span><b>${safe(client.phone||'--')}</b></div><div class="row"><span>Email</span><b>${safe(client.email||'--')}</b></div></div></div><div class="box"><h2>Dati specifici domanda</h2><table class="tbl">${dataRows||'<tr><td>Note</td><td>Nessun dato specifico salvato</td></tr>'}</table></div><div class="box"><h2>Documenti ricevuti / richiesti</h2><ul class="docs">${docs}</ul><p><b>Documenti mancanti:</b> ${safe((p.missingDocs||[]).join(', ')||'Nessuno')}</p></div><div class="notice"><b>Nota operativa:</b> questa ricevuta conferma la consegna/registrazione dei dati nel portale CAF CAE. La lavorazione definitiva, eventuale trasmissione ufficiale e protocolli esterni restano soggetti a controllo del team abilitato e agli esiti dei portali ufficiali.</div><div class="box"><h2>Mandato e privacy</h2><p>Il cliente conferisce mandato a CAF CAE e ai suoi incaricati/autorizzati per raccolta documenti, verifica preliminare, predisposizione pratica, richiesta integrazioni e comunicazioni relative al servizio indicato. Il cliente dichiara di aver letto e accettato informativa privacy e trattamento dati necessari.</p></div><div class="sig"><div><div class="sigbox">${sig?`<img src="${sig}" alt="firma cliente">`:'Firma cliente'}</div><small>Firma cliente / delegante</small></div><div><div class="sigbox">CAF CAE / incaricato</div><small>Firma operatore autorizzato</small></div></div><div class="footer">CAF CAE · www.cafcae.it · WhatsApp +39 353 375 5988 · Documento interno generato automaticamente · ${safe(receiptNo)}</div></div><script>window.print()</script></body></html>`;
+  }
+  const v16_oldDocHtml = docHtml;
+  docHtml = function(type, pratica){
+    if(String(type).includes('ricevuta')||String(type).includes('delega')||String(type).includes('fascicolo-pratica')) return v16OfficialDoc(type, pratica);
+    return v16_oldDocHtml(type, pratica);
+  };
+  const v16_oldDownloadPratica = downloadPratica;
+  downloadPratica = function(id){ const p=STATE.pratiche.find(x=>x.id===id); if(!p) return v16_oldDownloadPratica(id); downloadHtml(`${p.code}-fascicolo-ufficiale.html`, docHtml('fascicolo-pratica-'+p.id, p)); };
+
+
+  /* ========================= v17 Agent CGN-style from user recording ========================= */
+  function v17CgnServiceSections(){
+    return [
+      { title:'Servizi per i Privati', color:'privati', items:[
+        ['730','730','fa-file-invoice-dollar','Attivo'],
+        ['isee-ordinario','ISEE','fa-people-roof','Attivo'],
+        ['richieste-enti','Richieste Enti','fa-landmark','Da attivare'],
+        ['naspi','Disoccupazioni','fa-briefcase','Attivo'],
+        ['adi','Assegno di Inclusione e Prestazioni','fa-hand-holding-heart','Attivo'],
+        ['assegno-unico-universale','Assegni Familiari','fa-children','Attivo'],
+        ['red','RED','fa-file-signature','Attivo'],
+        ['invalidita-civile','Invalidità Civile e Assegno Sociale','fa-wheelchair','Attivo'],
+        ['imu-calcolo','IMU','fa-house-chimney','Attivo'],
+        ['visure-catastali','Visure Catastali','fa-map-location-dot','Attivo'],
+        ['registrazione-contratto-affitto','Contratti di locazione','fa-file-contract','Attivo'],
+        ['visure-ipocatastali','Visure Ipocatastali Certificate','fa-building-columns','Da attivare'],
+        ['successione','Successioni e Volture','fa-scale-balanced','Attivo'],
+        ['pratiche-colf-badanti','Colf e Badanti','fa-user-nurse','Attivo'],
+        ['spid-cie','SPID','fa-id-card','Attivo']
+      ]},
+      { title:'Servizi per le Aziende', color:'aziende', items:[
+        ['contabilita','Contabilità','fa-calculator','Da attivare'],
+        ['fatturazione','Fatturazione','fa-receipt','Attivazione in corso'],
+        ['dichiarazioni-comunicazioni-fiscali','Dichiarazioni e Comunicazioni Fiscali','fa-file-circle-check','Attivo'],
+        ['invio-telematico','Invio Telematico','fa-paper-plane','Attivazione in corso'],
+        ['bilancio-360','Bilancio 360°','fa-chart-pie','Attivazione in corso'],
+        ['f24-compilazione','F24','fa-money-check-dollar','Attivo'],
+        ['sportello-cciaa','Sportello CCIAA','fa-building','Attivo'],
+        ['comunicazione-unica-cciaa','Comunicazione Unica CCIAA','fa-diagram-project','Attivo'],
+        ['deposito-bilancio','Deposito Bilancio','fa-folder-open','Attivo'],
+        ['revisione-legale-vigilanza','Revisione Legale e Vigilanza','fa-magnifying-glass-chart','Da attivare'],
+        ['pec-firma-digitale','CGN Firme PEC e SPID','fa-signature','Attivo'],
+        ['consulenza-esg','Consulenza ESG','fa-leaf','Da attivare'],
+        ['ricerca-bandi','Ricerca Bandi','fa-bullhorn','Da attivare'],
+        ['firme-contratti','Firme e Contratti','fa-pen-nib','Da attivare'],
+        ['firma-digitale','Firma Digitale','fa-certificate','Da attivare'],
+        ['posta-elettronica-certificata','Posta Elettronica Certificata','fa-envelope-circle-check','Da attivare']
+      ]},
+      { title:'Servizi per lo Studio', color:'studio', items:[
+        ['antiriciclaggio','Antiriciclaggio','fa-shield-halved','Da attivare'],
+        ['chiara','Chiara','fa-comments','Attivo'],
+        ['privacy-gdpr','Privacy GDPR','fa-user-shield','Da attivare'],
+        ['conservazione-norma','Conservazione a norma','fa-box-archive','Da attivare'],
+        ['bonus-affitto','Bonus','fa-gift','Attivo'],
+        ['service-pratiche','Service Pratiche','fa-list-check','Attivo'],
+        ['pratiche-colf-badanti','Service Pratiche Colf e Badanti','fa-user-nurse','Attivo'],
+        ['cgn-pos','CGN POS','fa-credit-card','Attivo'],
+        ['scanner-documenti','Scanner CAF CAE','fa-print','Attivo']
+      ]},
+      { title:'Infrastruttura Tecnologica', color:'infra', items:[
+        ['firma-elettronica-avanzata','Firma Elettronica Avanzata','fa-fingerprint','Attivo'],
+        ['pagamenti-digitali','Pagamenti Digitali','fa-wallet','Attivo']
+      ]}
+    ];
+  }
+  function v17ServiceStatusPill(status){
+    const cls = status === 'Attivo' ? 'ok' : status === 'Attivazione in corso' ? 'warn' : 'muted';
+    const icon = status === 'Attivo' ? 'fa-circle-check' : status === 'Attivazione in corso' ? 'fa-circle-exclamation' : 'fa-circle-plus';
+    return `<span class="v17-status ${cls}"><i class="fa-solid ${icon}"></i>${safe(status)}</span>`;
+  }
+  function v17CatalogItem(item){
+    const [key,title,icon,status] = item;
+    const usable = status === 'Attivo' || !!serviceByKey(key);
+    return `<button class="v17-cgn-service ${usable ? '' : 'disabled'}" ${usable ? `data-service-key="${safe(key)}"` : ''}>
+      <span class="v17-cgn-service-icon"><i class="fa-solid ${safe(icon)}"></i></span>
+      <span class="v17-cgn-service-main"><b>${safe(title)}</b>${v17ServiceStatusPill(status)}</span>
+    </button>`;
+  }
+  function v17CgnCatalogHtml(){
+    return `<div class="v17-cgn-catalog">${v17CgnServiceSections().map(sec => `<section class="v17-cgn-col ${safe(sec.color)}"><h3>${safe(sec.title)}</h3><div class="v17-cgn-list">${sec.items.map(v17CatalogItem).join('')}</div></section>`).join('')}</div>`;
+  }
+  function v17ServiceFavouritesHtml(){
+    const favs = [
+      ['730','730','Dichiarazione 730 con quadri, CU, delega e liquidazione interna','fa-file-invoice-dollar'],
+      ['isee-ordinario','ISEE','DSU/ISEE ordinario, università, corrente e minorenni','fa-people-roof'],
+      ['naspi','NASpI','Disoccupazione, ultimo lavoro, IBAN e CPI','fa-briefcase'],
+      ['f24-compilazione','F24','Compilazione tributi, rate, scadenza e ricevuta','fa-money-check-dollar']
+    ];
+    return favs.map(([key,title,txt,icon]) => `<button class="v17-fav-card" data-service-key="${safe(key)}"><i class="fa-solid ${safe(icon)}"></i><b>${safe(title)}</b><span>${safe(txt)}</span></button>`).join('');
+  }
+  function v17EnsureAgentCgnShell(){
+    if(STATE.session?.role !== 'agent') return;
+    const actionbar = $('#dashboard-agent .cgn-actionbar .actionbar-actions');
+    if(actionbar && !$('#agentCgnPlatformBtn')){
+      actionbar.insertAdjacentHTML('afterbegin', `<button id="agentCgnPlatformBtn" class="btn light" data-agent-tab="agent-cgn-platform"><i class="fa-solid fa-th-large"></i> Piattaforma</button>`);
+    }
+    const home = $('#agent-home');
+    if(home && !$('#v17AgentWelcome')){
+      home.insertAdjacentHTML('afterbegin', `
+        <section id="v17AgentWelcome" class="v17-cgn-welcome">
+          <div><span class="v17-cgn-kicker">Piattaforma CAF CAE</span><h2>Benvenuto nella tua area operativa</h2><p>Gestisci pratiche, documenti, deleghe, ricevute e comunicazioni con Team Bangla / Team Italy in un flusso stile CGN.</p></div>
+          <div class="v17-welcome-illustration"><i class="fa-solid fa-laptop-file"></i></div>
+        </section>
+        <section class="white-card v17-favourites"><div class="card-head"><h3>I tuoi servizi preferiti</h3><button class="link-btn" data-agent-tab="agent-cgn-platform">Scopri tutti i servizi</button></div><div class="v17-fav-grid">${v17ServiceFavouritesHtml()}</div></section>`);
+    }
+    if(!$('#agent-cgn-platform')){
+      $('#agent-home')?.insertAdjacentHTML('afterend', `
+        <div id="agent-cgn-platform" class="agent-tab">
+          <section class="v17-cgn-page-head"><div><h2>Piattaforma CAF CAE</h2><p>Catalogo servizi organizzato come il modello CGN: scegli il servizio e compila la domanda guidata.</p></div><div class="v17-head-actions"><button class="btn blue" data-service-key="730"><i class="fa-solid fa-plus"></i> Nuovo 730</button><button class="btn orange" data-service-key="isee-ordinario"><i class="fa-solid fa-plus"></i> Nuovo ISEE</button></div></section>
+          ${v17CgnCatalogHtml()}
+          <section class="white-card v17-cgn-notes"><div class="card-head"><h3>Struttura presa dal video CGN</h3><span class="meta">CAF CAE branding + flusso operativo</span></div><div class="v17-note-grid"><div class="v17-note"><b>Workflow a scheda cliente</b><span>Prima servizio, poi cliente, dati specifici, documenti, delega e ricevuta.</span></div><div class="v17-note"><b>Catalogo a colonne</b><span>Privati, Aziende, Studio e Infrastruttura.</span></div><div class="v17-note"><b>Stati pratica</b><span>Nuova, documenti mancanti, verifica, Italy, completata.</span></div><div class="v17-note"><b>Ricevute ufficiali</b><span>Protocollo CAFCAE, dati cliente e fascicolo.</span></div></div></section>
+        </div>`);
+    }
+    const formCard = $('#agent-new .form-card');
+    if(formCard && !$('#v17CgnFlowStrip')){
+      formCard.insertAdjacentHTML('afterbegin', `<div id="v17CgnFlowStrip" class="v17-flow-strip"><span class="active"><i class="fa-solid fa-user"></i> Cliente</span><span><i class="fa-solid fa-clipboard-list"></i> Dati servizio</span><span><i class="fa-solid fa-folder-open"></i> Documenti</span><span><i class="fa-solid fa-signature"></i> Delega/Firma</span><span><i class="fa-solid fa-receipt"></i> Ricevuta</span></div>`);
+    }
+  }
+  function v17ApplyCgnFieldHints(){
+    const s = STATE.selectedService;
+    if(!s) return;
+    const box = $('#serviceSpecificArea');
+    if(!box || $('#v17AgencyBand')) return;
+    const agency = (typeof v9AgencyForService === 'function') ? v9AgencyForService({ title:s.title, group:s.group, special:s.serviceKey || s.key }) : { label:s.group || 'CAF CAE', cls:'' };
+    box.insertAdjacentHTML('afterbegin', `<div id="v17AgencyBand" class="v17-agency-band"><span class="agency-badge ${safe(agency.cls||'')}"><i class="fa-solid fa-building-columns"></i>${safe(agency.label || 'CAF CAE')}</span><span class="v17-agency-note">Flusso guidato: dati obbligatori, documenti, delega e ricevuta ufficiale CAF CAE.</span></div>`);
+  }
+  const v17_oldSelectService = selectService;
+  selectService = function(key, openTab = true){ v17_oldSelectService(key, openTab); v17ApplyCgnFieldHints(); };
+  const v17_oldRenderAgentDashboard = renderAgentDashboard;
+  renderAgentDashboard = function(){ v17_oldRenderAgentDashboard(); v17EnsureAgentCgnShell(); v17ApplyCgnFieldHints(); };
+
+
   async function boot() {
     seed();
     ensureState();

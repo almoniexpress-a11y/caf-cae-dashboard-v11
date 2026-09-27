@@ -87,3 +87,7 @@ The frontend still works locally if backend is offline. When API is configured:
 ## Important note
 
 This v11 package gives the live backend foundation for the full dashboard. The next hardening step is replacing snapshot sync gradually with table-by-table API calls for each form, but the backend already includes granular endpoints for practices, agent wallet, commercialista modules, tickets, notices, documents, Shopify proxy and webhooks.
+
+
+## v17 Agent CGN-style
+Added CGN-style agent portal structure based on uploaded screen recording while keeping CAF CAE branding and secure backend.

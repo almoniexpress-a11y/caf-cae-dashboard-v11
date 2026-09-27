@@ -262,3 +262,128 @@ window.CAF_CAE_SERVICE_CATALOG = (() => {
     ]
   };
 })();
+
+/* ========================= v16 Agent Pro CGN-style service forms ========================= */
+(() => {
+  const C = window.CAF_CAE_SERVICE_CATALOG;
+  if (!C) return;
+  const base = [
+    { name:'praticaPriority', label:'Priorità pratica', type:'select', options:['Normale','Urgente','Scadenza vicina','Blocco / errore portale'], help:'Usato da Team Bangla/Italy per ordinare il lavoro.' },
+    { name:'deadline', label:'Scadenza / appuntamento', type:'date', help:'Inserisci la scadenza cliente, bando, CPI, Questura o pagamento.' },
+    { name:'portalLoginStatus', label:'Accesso portale cliente', type:'select', options:['Non necessario','SPID disponibile','CIE disponibile','Credenziali disponibili','Da richiedere al cliente'] },
+    { name:'customerMessage', label:'Messaggio visibile al cliente', type:'textarea', optional:true, placeholder:'Messaggio/nota da inviare al cliente...' },
+    { name:'noteServizio', label:'Note interne per team', type:'textarea', optional:true, placeholder:'Scrivi dettagli importanti, anomalie, urgenze, istruzioni...' }
+  ];
+  const f = (name,label,type='text',extra={}) => ({name,label,type,...extra});
+  const forms = {
+    'isee-ordinario': [
+      f('iseeType','Tipo DSU / ISEE','select',{options:['Ordinario','Università','Corrente','Minorenni','Socio-sanitario','Residenze','Parificato']}),
+      f('nucleoCount','Componenti nucleo','number'), f('minorChildren','Figli minori','number',{optional:true}),
+      f('residenceHouse','Abitazione nucleo','select',{options:['Proprietà','Affitto','Comodato','Ospite','Estero']}),
+      f('rentAmount','Canone annuo affitto','number',{optional:true}), f('contractRegistration','Contratto affitto registrato','select',{options:['No','Sì','Da controllare']}),
+      f('incomeYear','Anno redditi','select',{options:['2024','2025','2026']}), f('bankDate','Saldo/giacenza al','select',{options:['31/12/2024','31/12/2025']}),
+      f('vehicles','Veicoli / targhe','textarea',{optional:true}), f('propertyNote','Immobili / patrimonio','textarea',{optional:true}),
+      ...base
+    ],
+    'isee-universita': [
+      f('universityName','Università / ente borsa'), f('studentMatricola','Matricola / pre-iscrizione ID',{type:'text'}, {optional:true}),
+      f('benefits','Benefici richiesti','select',{options:['Borsa di studio','Alloggio','Mensa','Riduzione tasse','Pacchetto completo']}),
+      f('studentAbroad','Famiglia estero','select',{options:['No','Sì']}), f('countryFamily','Paese famiglia',{type:'text'}, {optional:true}),
+      f('docsLegalized','Traduzione/apostille/legalizzazione','select',{options:['Completa','Provvisoria','Da integrare','Non richiesta']}),
+      f('incomeYear','Anno redditi estero','select',{options:['2024','2025']}), f('bankAssetDate','Patrimonio/conti al','select',{options:['31/12/2024','31/12/2025']}),
+      f('propertyStatus','Immobili famiglia','select',{options:['Nessuno','Presente','Da verificare']}), f('scholarshipPortal','Portale borsa','text',{optional:true}),
+      ...base
+    ],
+    'isee-corrente': [
+      f('ordinaryIseeProtocol','Protocollo ISEE ordinario'), f('reasonCurrent','Motivo corrente','select',{options:['Variazione lavoro','Variazione reddito','Variazione patrimonio','Altro']}),
+      f('eventDate','Data evento'), f('newIncome','Reddito aggiornato stimato','number'), f('newJobStatus','Situazione lavoro attuale','text'), ...base
+    ],
+    'naspi': [
+      f('lastEmployer','Ultimo datore di lavoro'), f('employerCfVat','CF/P.IVA datore','text',{optional:true}),
+      f('lastWorkStart','Data inizio ultimo lavoro','date'), f('lastWorkEnd','Data fine lavoro','date'),
+      f('cessationReason','Motivo cessazione','select',{options:['Licenziamento','Fine contratto','Dimissioni giusta causa','Risoluzione consensuale','Altro']}),
+      f('contractType','Tipo contratto','select',{options:['Tempo determinato','Tempo indeterminato','Part-time','Stagionale','Apprendistato','Altro']}),
+      f('workingDays','Giornate lavorate / settimane','text',{optional:true}), f('lastPayroll','Ultima busta paga mese','text',{optional:true}),
+      f('ibanNaspi','IBAN pagamento'), f('didStatus','DID / Patto servizio','select',{options:['Da fare','Già fatto','Non so']}),
+      f('cpi','Centro per l’Impiego','text',{optional:true}), ...base
+    ],
+    'dimissioni': [
+      f('employer','Datore di lavoro'), f('employerEmail','Email/PEC datore','email',{optional:true}), f('contractStart','Data assunzione','date'),
+      f('resignationDate','Data decorrenza dimissioni','date'), f('noticeDays','Giorni preavviso','number',{optional:true}),
+      f('resignationType','Tipo dimissione','select',{options:['Volontarie','Giusta causa','Risoluzione consensuale','Periodo prova']}), ...base
+    ],
+    'assegno-unico-universale': [
+      f('childrenCount','Numero figli','number'), f('childrenCf','CF figli','textarea'), f('parentStatus','Genitori','select',{options:['Coniugati/conviventi','Separati','Genitore unico','Altro']}),
+      f('ibanAssegno','IBAN'), f('iseePresent','ISEE presente','select',{options:['Sì','No','Da fare']}), ...base
+    ],
+    'permesso-rinnovo': [
+      f('permitType','Tipo permesso'), f('permitNumber','Numero permesso/ricevuta','text',{optional:true}), f('permitExpiry','Scadenza permesso','date'),
+      f('questuraCity','Questura'), f('passportNumber','Passaporto'), f('passportExpiry','Scadenza passaporto','date'),
+      f('kitType','Tipo kit','select',{options:['Rinnovo','Aggiornamento','Conversione','Duplicato','Carta UE']}),
+      f('workIncome','Reddito/lavoro presente','select',{options:['Sì','No','Familiare','Studente','Altro']}), ...base
+    ],
+    'carta-soggiorno': [
+      f('yearsInItaly','Anni soggiorno in Italia','number'), f('italianTest','Test lingua','select',{options:['Presente','Da prenotare','Esente']}),
+      f('incomeAmount','Reddito annuo','number'), f('familyMembers','Componenti nucleo','number'), f('housingCertificate','Idoneità alloggio','select',{options:['Presente','Da fare','Non richiesta']}), ...base
+    ],
+    'cittadinanza-italiana': [
+      f('citType','Tipo cittadinanza','select',{options:['Residenza','Matrimonio','Iure sanguinis/altro']}), f('residenceYears','Anni residenza','number'),
+      f('incomeYears','Redditi disponibili anni','text'), f('languageB1','Certificato B1','select',{options:['Presente','Da fare','Esente']}),
+      f('criminalDocs','Certificati penali origine','select',{options:['Completi','Da fare','Scaduti/da aggiornare']}), ...base
+    ],
+    'f24-compilazione': [f('taxCode','Codice tributo'),f('taxYear','Anno riferimento'),f('section','Sezione F24','select',{options:['Erario','INPS','Regioni','IMU e altri tributi locali','Accise']}),f('amount','Importo','number'),f('rateCode','Rateazione/regione/prov','text',{optional:true}),...base],
+    'apertura-partita-iva': [f('businessName','Nome attività'),f('ateco','Codice ATECO'),f('businessAddress','Sede attività'),f('regime','Regime','select',{options:['Forfettario','Ordinario','Da valutare']}),f('pec','PEC','email',{optional:true}),f('startDate','Data inizio attività','date'),...base]
+  };
+  Object.entries(forms).forEach(([key, value]) => { C.serviceForms[key] = value; });
+  C.serviceForms.isee = forms['isee-ordinario'];
+  C.serviceForms.naspi = forms.naspi;
+  C.serviceForms.immigrazione = forms['permesso-rinnovo'];
+  Object.assign(C.checklists, {
+    'ISEE Università':['Documento identità','Codice fiscale studente','Composizione nucleo familiare','Redditi famiglia anno richiesto','Saldo e giacenza conti','Patrimonio immobiliare al 31/12','Traduzione/apostille/legalizzazione','Portale borsa / matricola o pre-iscrizione'],
+    'ISEE Corrente':['ISEE ordinario valido','Documento identità','Codice fiscale','Prova variazione lavoro/reddito','Buste paga o cessazione rapporto','Saldo/giacenza aggiornati se patrimoniale'],
+    'Assegno Unico Universale':['Documento identità','Codici fiscali genitori e figli','IBAN','ISEE se presente','Permesso soggiorno se straniero','Eventuale sentenza separazione/affido'],
+    'Dimissioni':['Documento identità','Codice fiscale','Contratto lavoro','Ultima busta paga','Dati datore lavoro','Data decorrenza dimissioni'],
+    'F24 Compilazione':['Documento identità','Codice fiscale','Avviso/tributo da pagare','Anno riferimento','Importo e codice tributo','IBAN se pagamento richiesto'],
+    'Apertura Partita IVA':['Documento identità','Codice fiscale','Indirizzo attività','Codice ATECO','PEC','Recapiti cliente','Regime scelto']
+  });
+
+  // v17 CGN-style catalog additions observed from user screen recording
+  const v17Extra = [
+    ['richieste-enti','Richieste Enti',8,3,'enti','Richieste enti e controlli portali collegati.'],
+    ['red','RED',10,4,'red','Dichiarazione RED pensionati.'],
+    ['visure-ipocatastali','Visure Ipocatastali Certificate',12,5,'visure','Visure ipocatastali certificate.'],
+    ['contabilita','Contabilità',25,10,'azienda','Contabilità aziendale / ditta.'],
+    ['fatturazione','Fatturazione',12,5,'azienda','Fatturazione e controllo vendite/incassi.'],
+    ['dichiarazioni-comunicazioni-fiscali','Dichiarazioni e Comunicazioni Fiscali',25,10,'redditi','Dichiarazioni e comunicazioni fiscali.'],
+    ['invio-telematico','Invio Telematico',15,6,'fisco','Invio telematico pratiche e documenti.'],
+    ['bilancio-360','Bilancio 360°',30,12,'azienda','Bilancio 360 e riepilogo azienda.'],
+    ['sportello-cciaa','Sportello CCIAA',15,6,'azienda','Sportello CCIAA.'],
+    ['comunicazione-unica-cciaa','Comunicazione Unica CCIAA',20,8,'azienda','Comunicazione Unica CCIAA.'],
+    ['deposito-bilancio','Deposito Bilancio',25,10,'azienda','Deposito bilancio.'],
+    ['firme-contratti','Firme e Contratti',12,5,'pec','Firme e contratti digitali.'],
+    ['firma-digitale','Firma Digitale',12,5,'pec','Firma digitale.'],
+    ['posta-elettronica-certificata','Posta Elettronica Certificata',10,4,'pec','PEC.'],
+    ['antiriciclaggio','Antiriciclaggio',15,6,'studio','Antiriciclaggio.'],
+    ['privacy-gdpr','Privacy GDPR',15,6,'studio','Privacy GDPR.'],
+    ['conservazione-norma','Conservazione a norma',15,6,'studio','Conservazione a norma.'],
+    ['service-pratiche','Service Pratiche',10,4,'studio','Service pratiche.'],
+    ['cgn-pos','CAF CAE POS',10,4,'pagamenti','POS e pagamenti.'],
+    ['scanner-documenti','Scanner CAF CAE',8,3,'documenti','Scanner documenti e fascicolo.'],
+    ['firma-elettronica-avanzata','Firma Elettronica Avanzata',12,5,'pec','Firma elettronica avanzata.'],
+    ['pagamenti-digitali','Pagamenti Digitali',8,3,'pagamenti','Pagamenti digitali cliente.']
+  ];
+  const existingKeys = new Set(C.agentServiceGroups.flatMap(g => (g.services || []).map(s => s.key)));
+  const aziendeGroup = C.agentServiceGroups.find(g => g.group === 'Azienda') || C.agentServiceGroups[0];
+  v17Extra.forEach(([key,title,cost,commission,special,description]) => {
+    if(!existingKeys.has(key) && aziendeGroup) aziendeGroup.services.push({ key, title, cost, commission, special, description, group: aziendeGroup.group });
+  });
+  const v17GenericForm = [
+    f('portalReference','Riferimento portale / pratica','text',{optional:true}),
+    f('requestType','Tipo richiesta','text'),
+    f('dateRequest','Data richiesta / scadenza','date'),
+    f('operatorNote','Note operatore','textarea',{optional:true}),
+    ...base
+  ];
+  v17Extra.forEach(([key]) => { if(!C.serviceForms[key]) C.serviceForms[key] = v17GenericForm; });
+
+})();
