@@ -1,12 +1,13 @@
 {
-  "name": "caf-cae-full-dashboard-backend-v11",
-  "version": "11.0.0",
+  "name": "caf-cae-full-dashboard-backend-v16-membership",
+  "version": "16.0.0",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "check": "node --check server.js"
+    "check": "node --check server.js && node --check shopify-membership.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
