@@ -12,16 +12,6 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
 import { createClient } from '@supabase/supabase-js';
-import {
-  addMonthsIso,
-  customerDataFromOrder,
-  isOrderPaid,
-  isPaidOrderTopic,
-  membershipItemsFromOrder,
-  receiptNumber,
-  shopifyCustomerReference,
-  shopifyOrderReference
-} from './shopify-membership.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -57,6 +47,27 @@ const memory = new Map();
 const now = () => new Date().toISOString();
 const today = () => now().slice(0, 10);
 const safeNumber = v => Number(v || 0) || 0;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_FIELD_NAMES = new Set(['id', 'client_id', 'company_id', 'pratica_id', 'subscription_id']);
+const isUuid = v => typeof v === 'string' && UUID_PATTERN.test(v);
+function cleanUuidRecord(record = {}) {
+  const out = { ...record };
+  for (const key of Object.keys(out)) {
+    if (UUID_FIELD_NAMES.has(key) && out[key] && !isUuid(String(out[key]))) {
+      // Supabase UUID columns cannot receive frontend nanoid/text IDs.
+      // For primary id let Postgres generate; for nullable foreign keys clear it.
+      if (key === 'id') delete out[key];
+      else out[key] = null;
+    }
+  }
+  return out;
+}
+function hasInvalidUuidFilter(filter = {}) {
+  for (const [key, value] of Object.entries(filter)) {
+    if (UUID_FIELD_NAMES.has(key) && value && !isUuid(String(value))) return true;
+  }
+  return false;
+}
 const ok = (res, data = {}) => res.json({ ok: true, ...data });
 const bad = (res, status, message, details) => res.status(status).json({ ok: false, error: message, details: process.env.NODE_ENV === 'production' ? undefined : details });
 
@@ -67,8 +78,6 @@ const TABLES = [
   'comm_sales', 'comm_f24', 'comm_employees', 'comm_documents', 'comm_deadlines', 'comm_backups', 'communications',
   'tickets', 'operational_notices', 'sources', 'team_daily_reports', 'receipts', 'audit_logs', 'client_versions', 'shopify_sync_logs',
   'webhook_events', 'admin_product_prices', 'admin_promotions', 'admin_popups', 'admin_complaints', 'admin_manual_sales', 'salary_payments', 'commission_payments', 'portal_settings'
-  , 'membership_plans', 'membership_plan_services', 'branches', 'customer_memberships', 'membership_family_members', 'membership_usage',
-  'membership_audit_logs', 'membership_receipts', 'shopify_webhook_receipts'
 ];
 for (const t of TABLES) memory.set(t, []);
 
@@ -83,13 +92,6 @@ function seedMemory() {
     { id: 'u-bangla', username: 'bangla', password_hash: devHash, role: 'bangla', name: 'Team Bangla', email: 'bangla@cafcae.it', active: true, created_at: now() },
     { id: 'u-italy', username: 'italy', password_hash: devHash, role: 'italy', name: 'Team Italy', email: 'italy@cafcae.it', active: true, created_at: now() }
   );
-  memory.get('membership_plans').push(
-    { id: 'plan-smart', code: 'SMART', name: 'CAF CAE Membership Smart', duration_months: 12, practice_credits: 1, discount_percent: 10, max_family_members: 1, active: true },
-    { id: 'plan-mamma', code: 'MAMMA', name: 'CAF CAE Membership Mamma & Bebè', duration_months: 12, practice_credits: 5, discount_percent: 10, max_family_members: 5, active: true },
-    { id: 'plan-gold', code: 'GOLD', name: 'CAF CAE Membership Gold', duration_months: 12, practice_credits: 3, discount_percent: 15, max_family_members: 1, active: true },
-    { id: 'plan-platinum', code: 'PLATINUM', name: 'CAF CAE Membership Platinum', duration_months: 12, practice_credits: 5, discount_percent: 20, max_family_members: 5, active: true }
-  );
-  memory.get('branches').push({ id: 'branch-online', branch_code: 'ONLINE', branch_name: 'CAF CAE Online', city: 'Online', active: true });
 }
 seedMemory();
 
@@ -109,6 +111,7 @@ function requireRole(...roles) { return (req, res, next) => roles.includes(req.u
 
 async function dbSelect(table, filter = {}, opts = {}) {
   if (supabase) {
+    if (hasInvalidUuidFilter(filter)) return [];
     let q = supabase.from(table).select(opts.select || '*');
     Object.entries(filter).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') q = q.eq(k, v); });
     if (opts.order) q = q.order(opts.order, { ascending: opts.ascending ?? false });
@@ -124,19 +127,24 @@ async function dbSelect(table, filter = {}, opts = {}) {
   return rows;
 }
 async function dbOne(table, filter = {}, opts = {}) { return (await dbSelect(table, filter, { ...opts, limit: 1 }))[0] || null; }
-async function dbInsert(table, row) {
-  const record = { id: row.id || nanoid(12), created_at: row.created_at || now(), updated_at: row.updated_at || now(), ...row };
+async function dbInsert(table, row = {}) {
+  const base = { created_at: row.created_at || now(), updated_at: row.updated_at || now(), ...row };
+
   if (supabase) {
+    const record = cleanUuidRecord(base);
     const { data, error } = await supabase.from(table).insert(record).select().single();
     if (error) throw error;
     return data;
   }
+
+  const record = { id: row.id || nanoid(12), ...base };
   memory.get(table).unshift(record);
   return record;
 }
 async function dbUpdate(table, id, patch) {
-  const update = { ...patch, updated_at: now() };
+  const update = cleanUuidRecord({ ...patch, updated_at: now() });
   if (supabase) {
+    if (!isUuid(String(id))) throw new Error(`${table} invalid uuid id`);
     const { data, error } = await supabase.from(table).update(update).eq('id', id).select().single();
     if (error) throw error;
     return data;
@@ -160,7 +168,7 @@ async function audit(action, entity_type, entity_id, client_id, user, previous_v
   }).catch(() => null);
 }
 async function incrementVersion(client_id, reason = 'update') {
-  if (!client_id) return null;
+  if (!client_id || (supabase && !isUuid(String(client_id)))) return null;
   const current = await dbOne('client_versions', { client_id });
   const version = safeNumber(current?.version) + 1 || 1;
   return dbUpsert('client_versions', { client_id }, { version, reason, updated_at: now() });
@@ -213,7 +221,7 @@ const praticaSchema = z.object({ serviceTitle: z.string().optional(), service_ti
 const companySchema = z.object({ name: z.string().min(1), vat: z.string().optional(), email: z.string().email().optional().or(z.literal('')), phone: z.string().optional() }).passthrough();
 
 // Health and live state snapshot for all dashboards.
-app.get('/api/health', asyncHandler(async (_req, res) => ok(res, { service: 'CAF CAE full dashboard backend v16 membership', database: hasSupabase ? 'supabase' : 'memory-fallback', time: now() })));
+app.get('/api/health', asyncHandler(async (_req, res) => ok(res, { service: 'CAF CAE full dashboard backend v15 admin pro', database: hasSupabase ? 'supabase' : 'memory-fallback', time: now() })));
 
 app.get('/api/live/version', requireAuth, asyncHandler(async (req, res) => {
   const key = `${req.query.role || 'all'}:${req.query.email || 'all'}`;
@@ -652,42 +660,6 @@ app.get('/apps/cae-commercialista/resources/:kind', asyncHandler(async (req, res
   if (!table) return bad(res, 404, 'Risorsa non supportata.');
   ok(res, { client_id: client.id, data: await dbSelect(table, { company_id: client.id }, { order: 'updated_at' }) });
 }));
-
-// Shopify membership app landing page and storefront App Proxy API.
-app.get('/api/shopify/app', (_req, res) => ok(res, {
-  service: 'CAF CAE Membership',
-  status: 'online',
-  shop: process.env.SHOPIFY_SHOP || null,
-  proxy_path: process.env.SHOPIFY_APP_PROXY_PATH || '/apps/cae-membership'
-}));
-
-async function membershipDashboardData(clientId) {
-  const memberships = await dbSelect('customer_memberships', { client_id: clientId }, { order: 'created_at' });
-  const enriched = await Promise.all(memberships.map(async membership => ({
-    ...membership,
-    plan: await dbOne('membership_plans', { id: membership.plan_id }),
-    family_members: await dbSelect('membership_family_members', { membership_id: membership.id }, { order: 'created_at' }),
-    usage: await dbSelect('membership_usage', { membership_id: membership.id }, { order: 'used_at' })
-  })));
-  return {
-    client: await dbOne('clients', { id: clientId }),
-    memberships: enriched,
-    receipts: await dbSelect('membership_receipts', { client_id: clientId }, { order: 'issued_at' })
-  };
-}
-
-app.get(['/apps/cae-membership', '/apps/cae-membership/dashboard'], asyncHandler(async (req, res) => {
-  const client = await shopifyClientFromProxy(req);
-  if (!client) return bad(res, 401, 'Accedi al tuo account Shopify per visualizzare la membership.');
-  ok(res, { client_id: client.id, data: await membershipDashboardData(client.id) });
-}));
-
-app.get('/apps/cae-membership/receipts', asyncHandler(async (req, res) => {
-  const client = await shopifyClientFromProxy(req);
-  if (!client) return bad(res, 401, 'Accedi al tuo account Shopify per visualizzare le ricevute.');
-  ok(res, { client_id: client.id, receipts: await dbSelect('membership_receipts', { client_id: client.id }, { order: 'issued_at' }) });
-}));
-
 async function customerDashboardData(client_id) {
   const [company, sales, pratiche, invoices, f24, docs, communications, deadlines] = await Promise.all([
     dbOne('companies', { id: client_id }), dbSelect('comm_sales', { company_id: client_id }, { order: 'date', limit: 60 }), dbSelect('pratiche', {}, { order: 'updated_at' }), dbSelect('invoices', { company_id: client_id }), dbSelect('comm_f24', { company_id: client_id }), dbSelect('comm_documents', { company_id: client_id }), dbSelect('communications', { company_id: client_id }), dbSelect('comm_deadlines', { company_id: client_id })
@@ -695,203 +667,20 @@ async function customerDashboardData(client_id) {
   return { company, sales, pratiche: pratiche.filter(p => p.client_data?.companyId === client_id || p.client_data?.client_id === client_id), invoices, f24, documents: docs, communications, deadlines };
 }
 
-// Shopify webhooks and paid membership activation.
+// Shopify webhooks.
 function verifyShopifyWebhook(req) {
   const secret = process.env.SHOPIFY_API_SECRET;
-  if (!secret) return process.env.NODE_ENV !== 'production';
+  if (!secret) return true;
   const hmac = req.get('X-Shopify-Hmac-SHA256') || '';
   const digest = crypto.createHmac('sha256', secret).update(req.body).digest('base64');
   try { return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(hmac)); } catch { return false; }
 }
-
-async function dbInsertAutoId(table, row) {
-  if (supabase) {
-    const { data, error } = await supabase.from(table).insert(row).select().single();
-    if (error) throw error;
-    return data;
-  }
-  return dbInsert(table, row);
-}
-
-async function dbUpdateWhere(table, match, patch) {
-  const update = { ...patch, updated_at: now() };
-  if (supabase) {
-    let query = supabase.from(table).update(update);
-    Object.entries(match).forEach(([key, value]) => { query = query.eq(key, value); });
-    const { data, error } = await query.select().maybeSingle();
-    if (error) throw error;
-    return data;
-  }
-  const record = await dbOne(table, match);
-  return record ? dbUpdate(table, record.id, update) : null;
-}
-
-async function findOrCreateShopifyClient(order) {
-  const customerData = customerDataFromOrder(order);
-  let client = customerData.shopify_customer_id
-    ? await dbOne('clients', { shopify_customer_id: customerData.shopify_customer_id })
-    : null;
-  if (!client && customerData.email) client = await dbOne('clients', { email: customerData.email });
-
-  if (client) {
-    const safePatch = Object.fromEntries(Object.entries(customerData).filter(([, value]) => value !== null && value !== ''));
-    return dbUpdate('clients', client.id, safePatch);
-  }
-
-  return dbInsertAutoId('clients', { ...customerData, created_by: 'shopify-webhook' });
-}
-
-function membershipNumberFor(planCode, order, lineItemKey) {
-  const orderPart = String(order.order_number || order.name || order.id || 'ORDER').replace(/[^A-Za-z0-9]/g, '');
-  const itemPart = String(lineItemKey || '').replace(/[^A-Za-z0-9]/g, '').slice(-8) || nanoid(6).toUpperCase();
-  return `CAE-${planCode}-${orderPart}-${itemPart}`.slice(0, 80);
-}
-
-async function activateMembershipOrder(order, webhookId) {
-  const orderId = shopifyOrderReference(order);
-  if (!orderId) throw new Error('Shopify order id missing');
-  if (!isOrderPaid(order)) return { status: 'ignored', reason: 'order-not-paid', memberships: [] };
-
-  const membershipItems = membershipItemsFromOrder(order);
-  if (!membershipItems.length) return { status: 'ignored', reason: 'no-membership-sku', memberships: [] };
-
-  const client = await findOrCreateShopifyClient(order);
-  const branch = await dbOne('branches', { branch_code: 'ONLINE' });
-  const startsAt = order.processed_at || order.created_at || now();
-  const activated = [];
-
-  for (const entry of membershipItems) {
-    const planRecord = await dbOne('membership_plans', { code: entry.plan.code, active: true });
-    if (!planRecord) throw new Error(`Membership plan ${entry.plan.code} is missing or inactive. Run the v16 Supabase migration.`);
-
-    for (let unit = 1; unit <= entry.quantity; unit += 1) {
-      const baseLineItemId = String(entry.item.id || entry.item.admin_graphql_api_id || entry.sku);
-      const lineItemKey = entry.quantity > 1 ? `${baseLineItemId}:${unit}` : baseLineItemId;
-      let membership = await dbOne('customer_memberships', { shopify_order_id: orderId, shopify_line_item_id: lineItemKey });
-
-      if (!membership) {
-        const membershipNumber = membershipNumberFor(entry.plan.code, order, lineItemKey);
-        membership = await dbInsertAutoId('customer_memberships', {
-          membership_number: membershipNumber,
-          client_id: client.id,
-          plan_id: planRecord.id,
-          branch_id: branch?.id || null,
-          shopify_order_id: orderId,
-          shopify_order_name: order.name || String(order.order_number || ''),
-          shopify_line_item_id: lineItemKey,
-          shopify_customer_id: shopifyCustomerReference(order) || null,
-          sku: entry.sku,
-          status: 'Active',
-          starts_at: startsAt,
-          expires_at: addMonthsIso(startsAt, Number(planRecord.duration_months || entry.plan.durationMonths)),
-          practice_credits_total: Number(planRecord.practice_credits ?? entry.plan.practiceCredits),
-          practice_credits_used: 0,
-          discount_percent: Number(planRecord.discount_percent ?? entry.plan.discountPercent),
-          max_family_members: Number(planRecord.max_family_members ?? entry.plan.maxFamilyMembers),
-          amount_paid: Number(entry.item.price || 0),
-          currency: order.currency || order.presentment_currency || 'EUR',
-          source: 'shopify',
-          metadata: {
-            webhook_id: webhookId,
-            product_id: entry.item.product_id || null,
-            variant_id: entry.item.variant_id || null,
-            product_title: entry.item.title || entry.plan.name,
-            unit,
-            quantity: entry.quantity
-          }
-        });
-
-        await dbInsertAutoId('membership_audit_logs', {
-          membership_id: membership.id,
-          action: 'ACTIVATED_FROM_SHOPIFY',
-          actor: 'shopify-webhook',
-          details: { webhook_id: webhookId, shopify_order_id: orderId, sku: entry.sku }
-        });
-      }
-
-      let receipt = await dbOne('membership_receipts', { shopify_order_id: orderId, shopify_line_item_id: lineItemKey });
-      if (!receipt) {
-        receipt = await dbInsertAutoId('membership_receipts', {
-          receipt_number: receiptNumber(order, activated.length + 1),
-          membership_id: membership.id,
-          client_id: client.id,
-          shopify_order_id: orderId,
-          shopify_line_item_id: lineItemKey,
-          amount: Number(entry.item.price || 0),
-          currency: order.currency || order.presentment_currency || 'EUR',
-          status: 'Paid',
-          issued_at: order.processed_at || now(),
-          receipt_data: {
-            membership_number: membership.membership_number,
-            plan_code: entry.plan.code,
-            plan_name: planRecord.name || entry.plan.name,
-            customer_email: client.email,
-            customer_phone: client.phone,
-            order_name: order.name || null,
-            practice_credits: membership.practice_credits_total,
-            discount_percent: membership.discount_percent,
-            starts_at: membership.starts_at,
-            expires_at: membership.expires_at
-          }
-        });
-      }
-
-      activated.push({ membership_id: membership.id, membership_number: membership.membership_number, receipt_id: receipt.id, sku: entry.sku });
-    }
-  }
-
-  await incrementVersion(client.id, 'shopify-membership-activated').catch(() => null);
-  return { status: 'processed', client_id: client.id, memberships: activated };
-}
-
 app.post('/api/shopify/webhooks/:topic', asyncHandler(async (req, res) => {
   if (!verifyShopifyWebhook(req)) return bad(res, 401, 'Webhook Shopify non valido.');
   const raw = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body || {});
   let payload = {}; try { payload = JSON.parse(raw); } catch { payload = { raw }; }
-  const headerTopic = req.get('X-Shopify-Topic') || '';
-  const topic = headerTopic || req.params.topic;
-  const shopDomain = req.get('X-Shopify-Shop-Domain') || process.env.SHOPIFY_SHOP || null;
-  const configuredShop = String(process.env.SHOPIFY_SHOP || '').toLowerCase();
-  if (configuredShop && String(shopDomain || '').toLowerCase() !== configuredShop) {
-    return bad(res, 403, 'Negozio Shopify non autorizzato.');
-  }
-  const webhookId = req.get('X-Shopify-Webhook-Id') || crypto.createHash('sha256').update(`${topic}:${raw}`).digest('hex');
-
-  let receipt = await dbOne('shopify_webhook_receipts', { webhook_id: webhookId });
-  if (receipt?.status === 'Completed' || receipt?.status === 'Ignored') {
-    return ok(res, { duplicate: true, status: receipt.status });
-  }
-  if (!receipt) {
-    receipt = await dbInsertAutoId('shopify_webhook_receipts', {
-      webhook_id: webhookId,
-      topic,
-      shop_domain: shopDomain,
-      shopify_order_id: shopifyOrderReference(payload) || null,
-      status: 'Processing'
-    });
-  } else {
-    await dbUpdateWhere('shopify_webhook_receipts', { webhook_id: webhookId }, { status: 'Processing', error_message: null });
-  }
-
-  await dbInsertAutoId('webhook_events', {
-    provider: 'shopify',
-    event_type: topic,
-    payload,
-    shopify_shop: shopDomain,
-    processed: false
-  });
-
-  try {
-    const result = isPaidOrderTopic(topic)
-      ? await activateMembershipOrder(payload, webhookId)
-      : { status: 'ignored', reason: 'unsupported-topic', memberships: [] };
-    const finalStatus = result.status === 'processed' ? 'Completed' : 'Ignored';
-    await dbUpdateWhere('shopify_webhook_receipts', { webhook_id: webhookId }, { status: finalStatus, processed_at: now() });
-    return ok(res, { status: finalStatus, reason: result.reason, memberships: result.memberships });
-  } catch (error) {
-    await dbUpdateWhere('shopify_webhook_receipts', { webhook_id: webhookId }, { status: 'Failed', error_message: error.message }).catch(() => null);
-    throw error;
-  }
+  await dbInsert('webhook_events', { provider: 'shopify', event_type: req.params.topic, payload, shopify_shop: req.get('X-Shopify-Shop-Domain') || process.env.SHOPIFY_SHOP });
+  ok(res);
 }));
 
 app.use((err, req, res, _next) => {
@@ -900,4 +689,4 @@ app.use((err, req, res, _next) => {
   bad(res, 500, err.message || 'Errore server.');
 });
 
-app.listen(PORT, () => console.log(`CAF CAE full dashboard backend v16 membership running on port ${PORT} (${hasSupabase ? 'Supabase' : 'memory fallback'})`));
+app.listen(PORT, () => console.log(`CAF CAE full dashboard backend v15 admin pro running on port ${PORT} (${hasSupabase ? 'Supabase' : 'memory fallback'})`));
