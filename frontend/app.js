@@ -2058,12 +2058,18 @@
     const icon = status === 'Attivo' ? 'fa-circle-check' : status === 'Attivazione in corso' ? 'fa-circle-exclamation' : 'fa-circle-plus';
     return `<span class="v17-status ${cls}"><i class="fa-solid ${icon}"></i>${safe(status)}</span>`;
   }
+  function v17AgentServiceStatus(key, fallbackStatus){
+    const svc = serviceByKey(key);
+    if (!svc || svc.enabled === false) return 'Da attivare';
+    return canUseService(key) ? 'Attivo' : 'Da attivare';
+  }
   function v17CatalogItem(item){
     const [key,title,icon,status] = item;
-    const usable = status === 'Attivo' || !!serviceByKey(key);
-    return `<button class="v17-cgn-service ${usable ? '' : 'disabled'}" ${usable ? `data-service-key="${safe(key)}"` : ''}>
+    const finalStatus = v17AgentServiceStatus(key, status);
+    const usable = finalStatus === 'Attivo';
+    return `<button class="v17-cgn-service ${usable ? '' : 'disabled'}" ${usable ? `data-service-key="${safe(key)}"` : `title="Servizio non abilitato per questo agente"`}>
       <span class="v17-cgn-service-icon"><i class="fa-solid ${safe(icon)}"></i></span>
-      <span class="v17-cgn-service-main"><b>${safe(title)}</b>${v17ServiceStatusPill(status)}</span>
+      <span class="v17-cgn-service-main"><b>${safe(title)}</b>${v17ServiceStatusPill(finalStatus)}</span>
     </button>`;
   }
   function v17CgnCatalogHtml(){
@@ -2076,7 +2082,10 @@
       ['naspi','NASpI','Disoccupazione, ultimo lavoro, IBAN e CPI','fa-briefcase'],
       ['f24-compilazione','F24','Compilazione tributi, rate, scadenza e ricevuta','fa-money-check-dollar']
     ];
-    return favs.map(([key,title,txt,icon]) => `<button class="v17-fav-card" data-service-key="${safe(key)}"><i class="fa-solid ${safe(icon)}"></i><b>${safe(title)}</b><span>${safe(txt)}</span></button>`).join('');
+    return favs.map(([key,title,txt,icon]) => {
+      const active = v17AgentServiceStatus(key, 'Da attivare') === 'Attivo';
+      return `<button class="v17-fav-card ${active ? '' : 'disabled'}" ${active ? `data-service-key="${safe(key)}"` : `title="Servizio non abilitato per questo agente"`}><i class="fa-solid ${safe(icon)}"></i><b>${safe(title)}</b><span>${safe(txt)}</span>${v17ServiceStatusPill(active ? 'Attivo' : 'Da attivare')}</button>`;
+    }).join('');
   }
   function v17EnsureAgentCgnShell(){
     if(STATE.session?.role !== 'agent') return;
