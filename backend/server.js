@@ -76,7 +76,7 @@ const TABLES = [
   'plans', 'subscriptions', 'subscription_payments', 'pratiche', 'practice_status_history', 'documents', 'generated_documents',
   'agent_clients', 'agent_credit_transactions', 'agent_credit_requests', 'modify_requests', 'companies', 'invoices',
   'comm_sales', 'comm_f24', 'comm_employees', 'comm_documents', 'comm_deadlines', 'comm_backups', 'communications',
-  'tickets', 'operational_notices', 'sources', 'team_daily_reports', 'receipts', 'audit_logs', 'client_versions', 'shopify_sync_logs',
+  'tickets', 'operational_notices', 'sources', 'team_daily_reports', 'receipts', 'practice_history', 'practice_watchers', 'practice_notifications', 'practice_messages', 'audit_logs', 'client_versions', 'shopify_sync_logs',
   'webhook_events', 'admin_product_prices', 'admin_promotions', 'admin_popups', 'admin_complaints', 'admin_manual_sales', 'salary_payments', 'commission_payments', 'portal_settings'
 ];
 for (const t of TABLES) memory.set(t, []);
@@ -167,6 +167,66 @@ async function audit(action, entity_type, entity_id, client_id, user, previous_v
     user_agent: req?.headers?.['user-agent'] || null
   }).catch(() => null);
 }
+
+
+// CAF CAE ERP v20 workflow helpers: owner + watchers + timeline.
+const V20_ROLES = ['admin', 'agent', 'bangla', 'italy', 'commercialista'];
+function v20RoleLabel(role) {
+  return ({ admin: 'Admin', agent: 'Agente', bangla: 'Team Bangla', italy: 'Team Italy', commercialista: 'Commercialista' })[role] || role || 'Team';
+}
+function v20Unique(values = []) { return [...new Set((values || []).filter(Boolean))]; }
+function v20UserLabel(user) { return user?.name || user?.email || user?.username || 'system'; }
+function v20OwnerOf(p = {}) { return p.current_owner || p.assigned_team || p.route_team || 'bangla'; }
+function v20WatchersOf(p = {}, extra = []) {
+  return v20Unique([...(Array.isArray(p.watchers) ? p.watchers : []), 'admin', v20OwnerOf(p), p.agent_email ? 'agent' : null, ...(Array.isArray(p.previous_owners) ? p.previous_owners : []), ...extra]);
+}
+async function v20SafeInsert(table, row) { try { return await dbInsert(table, row); } catch (err) { console.warn(`v20 ${table} insert skipped`, err.message); return null; } }
+async function v20AddHistory(pratica, action, user, req, payload = {}) {
+  const row = await v20SafeInsert('practice_history', {
+    pratica_id: pratica.id,
+    pratica_code: pratica.code,
+    action,
+    event_type: payload.event_type || 'activity',
+    from_owner: payload.from_owner || null,
+    to_owner: payload.to_owner || v20OwnerOf(pratica),
+    status: pratica.status,
+    workflow_status: pratica.workflow_status || pratica.status,
+    progress: safeNumber(pratica.progress),
+    actor_role: user?.role || payload.actor_role || 'system',
+    actor_email: user?.email || payload.actor_email || null,
+    actor_name: v20UserLabel(user),
+    metadata: payload.metadata || {},
+    created_at: now()
+  });
+  await audit(action, 'pratica', pratica.id, pratica.client_data?.client_id, user, null, { pratica: pratica.code, ...payload }, req).catch(() => null);
+  return row;
+}
+async function v20Notify(target_role, pratica, title, message, user) {
+  return v20SafeInsert('practice_notifications', {
+    target_role,
+    pratica_id: pratica.id,
+    pratica_code: pratica.code,
+    title,
+    message,
+    is_read: false,
+    actor_email: user?.email || null,
+    actor_name: v20UserLabel(user),
+    created_at: now()
+  });
+}
+async function v20SaveWatchers(pratica, watchers) {
+  await Promise.all(v20Unique(watchers).map(role => v20SafeInsert('practice_watchers', { pratica_id: pratica.id, pratica_code: pratica.code, role, created_at: now() })));
+}
+async function v20HydratePractice(pratica) {
+  if (!pratica) return pratica;
+  const [history, messages, notifications] = await Promise.all([
+    dbSelect('practice_history', { pratica_id: pratica.id }, { order: 'created_at', limit: 80 }).catch(() => []),
+    dbSelect('practice_messages', { pratica_id: pratica.id }, { order: 'created_at', limit: 80 }).catch(() => []),
+    dbSelect('practice_notifications', { pratica_id: pratica.id }, { order: 'created_at', limit: 20 }).catch(() => [])
+  ]);
+  return { ...pratica, history, messages, notifications, current_owner: v20OwnerOf(pratica), watchers: v20WatchersOf(pratica) };
+}
+
 async function incrementVersion(client_id, reason = 'update') {
   if (!client_id || (supabase && !isUuid(String(client_id)))) return null;
   const current = await dbOne('client_versions', { client_id });
@@ -191,7 +251,12 @@ function praticaPayload(b = {}) {
     agent_email: b.agentEmail || b.agent_email || null,
     agent_name: b.agentName || b.agent_name || null,
     route_team: b.routeTeam || b.route_team || 'bangla',
-    assigned_team: b.assignedTeam || b.assigned_team || 'bangla',
+    assigned_team: b.assignedTeam || b.assigned_team || b.currentOwner || b.current_owner || 'bangla',
+    current_owner: b.currentOwner || b.current_owner || b.assignedTeam || b.assigned_team || 'bangla',
+    workflow_status: b.workflowStatus || b.workflow_status || b.status || 'Nuova',
+    progress: safeNumber(b.progress || 15),
+    watchers: b.watchers || ['admin', b.agentEmail || b.agent_email ? 'agent' : null, b.assignedTeam || b.assigned_team || 'bangla'].filter(Boolean),
+    previous_owners: b.previousOwners || b.previous_owners || [],
     status: b.status || 'Nuova',
     payment_status: b.paymentStatus || b.payment_status || 'Agent credit',
     payment_mode: b.paymentMode || b.payment_mode || 'Credito agente',
@@ -358,9 +423,9 @@ app.get('/api/dashboard/:role', asyncHandler(async (req, res) => {
   const role = req.params.role; const email = req.query.email;
   let pratiche = await dbSelect('pratiche', {}, { order: 'updated_at' });
   if (role === 'agent') pratiche = pratiche.filter(p => p.agent_email === email);
-  if (role === 'bangla') pratiche = pratiche.filter(p => ['bangla', 'all'].includes(p.assigned_team) || ['bangla', 'all'].includes(p.route_team));
-  if (role === 'italy') pratiche = pratiche.filter(p => p.assigned_team === 'italy' || p.route_team === 'italy');
-  if (role === 'commercialista') pratiche = pratiche.filter(p => p.service_group === 'Commercialista' || p.client_data?.email === email);
+  if (role === 'bangla') pratiche = pratiche.filter(p => v20WatchersOf(p).includes('bangla') || v20OwnerOf(p) === 'bangla');
+  if (role === 'italy') pratiche = pratiche.filter(p => v20WatchersOf(p).includes('italy') || v20OwnerOf(p) === 'italy');
+  if (role === 'commercialista') pratiche = pratiche.filter(p => v20WatchersOf(p).includes('commercialista') || v20OwnerOf(p) === 'commercialista' || p.service_group === 'Commercialista');
   const tickets = role === 'admin' ? await dbSelect('tickets', {}, { order: 'created_at' }) : await dbSelect('tickets', { created_by: email }, { order: 'created_at' });
   ok(res, { pratiche, tickets, stats: buildStats(pratiche) });
 }));
@@ -389,6 +454,11 @@ app.post('/api/pratiche', asyncHandler(async (req, res) => {
   const created = await dbInsert('pratiche', payload);
   await audit('practice_created', 'pratica', created.id, created.client_data?.client_id, req.body.by || { email: created.agent_email }, null, created, req);
   if (created.agent_email && created.cost > 0) await dbInsert('agent_credit_transactions', { agent_email: created.agent_email, type: 'minus', amount: created.cost, reason: `Creazione ${created.service_title} ${created.code}`, pratica_id: created.id });
+  created.watchers = v20WatchersOf(created, ['bangla']);
+  await v20SaveWatchers(created, created.watchers);
+  await v20AddHistory(created, 'Pratica creata', req.user || req.body.by || { email: created.agent_email, role: created.agent_email ? 'agent' : 'system' }, req, { event_type: 'created', to_owner: v20OwnerOf(created) });
+  await v20Notify('bangla', created, 'Nuova pratica', `${created.code} assegnata a Team Bangla.`, req.user || {});
+  await v20Notify('admin', created, 'Nuova pratica creata', `${created.code} creata e assegnata.`, req.user || {});
   await bumpSystem('all', 'all', 'pratica created');
   ok(res, { pratica: created });
 }));
@@ -398,6 +468,11 @@ app.post('/api/pratiche/create', asyncHandler(async (req, res) => {
   const created = await dbInsert('pratiche', payload);
   await audit('practice_created', 'pratica', created.id, created.client_data?.client_id, req.body.by || { email: created.agent_email }, null, created, req);
   if (created.agent_email && created.cost > 0) await dbInsert('agent_credit_transactions', { agent_email: created.agent_email, type: 'minus', amount: created.cost, reason: `Creazione ${created.service_title} ${created.code}`, pratica_id: created.id });
+  created.watchers = v20WatchersOf(created, ['bangla']);
+  await v20SaveWatchers(created, created.watchers);
+  await v20AddHistory(created, 'Pratica creata', req.user || req.body.by || { email: created.agent_email, role: created.agent_email ? 'agent' : 'system' }, req, { event_type: 'created', to_owner: v20OwnerOf(created) });
+  await v20Notify('bangla', created, 'Nuova pratica', `${created.code} assegnata a Team Bangla.`, req.user || {});
+  await v20Notify('admin', created, 'Nuova pratica creata', `${created.code} creata e assegnata.`, req.user || {});
   await bumpSystem('all', 'all', 'pratica created');
   ok(res, { pratica: created });
 }));
@@ -430,9 +505,70 @@ app.post('/api/pratiche/:id/missing-docs', asyncHandler(async (req, res) => {
 app.post('/api/pratiche/:id/route', asyncHandler(async (req, res) => {
   const old = await dbOne('pratiche', { id: req.params.id }) || await dbOne('pratiche', { code: req.params.id });
   if (!old) return bad(res, 404, 'Pratica non trovata.');
-  const team = req.body.assigned_team || req.body.team || 'italy';
-  const updated = await dbUpdate('pratiche', old.id, { route_team: team, assigned_team: team, status: req.body.status || 'In verifica', team_message: req.body.message || `Invio a ${team}`, team_history: [{ by: req.body.by || 'api', role: req.body.role || 'team', action: req.body.message || `Invio a ${team}`, date: today() }, ...(old.team_history || [])] });
+  const from = v20OwnerOf(old);
+  const team = req.body.assigned_team || req.body.team || req.body.toOwner || 'italy';
+  const message = req.body.message || `Trasferita da ${v20RoleLabel(from)} a ${v20RoleLabel(team)}`;
+  const previous = v20Unique([...(old.previous_owners || []), from]);
+  const watchers = v20WatchersOf(old, [from, team, 'admin']);
+  const updated = await dbUpdate('pratiche', old.id, {
+    route_team: team,
+    assigned_team: team,
+    current_owner: team,
+    previous_owners: previous,
+    watchers,
+    status: req.body.status || (team === 'commercialista' ? 'In lavorazione Commercialista' : 'In verifica'),
+    workflow_status: req.body.status || (team === 'commercialista' ? 'In lavorazione Commercialista' : 'In verifica'),
+    progress: safeNumber(req.body.progress || old.progress || (team === 'commercialista' ? 70 : 55)),
+    team_message: message,
+    team_history: [{ by: req.body.by || v20UserLabel(req.user), role: req.body.role || req.user?.role || 'team', action: message, date: today() }, ...(old.team_history || [])]
+  });
+  await v20SaveWatchers(updated, watchers);
+  await v20AddHistory(updated, message, req.user || { email: req.body.by, role: req.body.role }, req, { event_type: 'transfer', from_owner: from, to_owner: team });
+  await v20Notify(team, updated, 'Nuova pratica assegnata', `${updated.code} ricevuta da ${v20RoleLabel(from)}.`, req.user || {});
+  await v20Notify('admin', updated, 'Trasferimento pratica', `${updated.code}: ${v20RoleLabel(from)} → ${v20RoleLabel(team)}.`, req.user || {});
+  await bumpSystem('all', 'all', 'workflow transfer');
   ok(res, { pratica: updated });
+}));
+app.post('/api/practices/:id/transfer', asyncHandler(async (req, res) => {
+  const old = await dbOne('pratiche', { id: req.params.id }) || await dbOne('pratiche', { code: req.params.id });
+  if (!old) return bad(res, 404, 'Pratica non trovata.');
+  const from = v20OwnerOf(old);
+  const team = req.body.assigned_team || req.body.team || req.body.toOwner || 'italy';
+  const message = req.body.message || `Trasferita da ${v20RoleLabel(from)} a ${v20RoleLabel(team)}`;
+  const previous = v20Unique([...(old.previous_owners || []), from]);
+  const watchers = v20WatchersOf(old, [from, team, 'admin']);
+  const updated = await dbUpdate('pratiche', old.id, {
+    route_team: team, assigned_team: team, current_owner: team, previous_owners: previous, watchers,
+    status: req.body.status || (team === 'commercialista' ? 'In lavorazione Commercialista' : 'In verifica'),
+    workflow_status: req.body.status || (team === 'commercialista' ? 'In lavorazione Commercialista' : 'In verifica'),
+    progress: safeNumber(req.body.progress || old.progress || (team === 'commercialista' ? 70 : 55)),
+    team_message: message,
+    team_history: [{ by: req.body.by || v20UserLabel(req.user), role: req.body.role || req.user?.role || 'team', action: message, date: today() }, ...(old.team_history || [])]
+  });
+  await v20SaveWatchers(updated, watchers);
+  await v20AddHistory(updated, message, req.user || { email: req.body.by, role: req.body.role }, req, { event_type: 'transfer', from_owner: from, to_owner: team });
+  await v20Notify(team, updated, 'Nuova pratica assegnata', `${updated.code} ricevuta da ${v20RoleLabel(from)}.`, req.user || {});
+  await v20Notify('admin', updated, 'Trasferimento pratica', `${updated.code}: ${v20RoleLabel(from)} → ${v20RoleLabel(team)}.`, req.user || {});
+  await bumpSystem('all', 'all', 'workflow transfer');
+  ok(res, { pratica: updated });
+}));
+app.get('/api/practices/:id/timeline', asyncHandler(async (req, res) => {
+  const p = await dbOne('pratiche', { id: req.params.id }) || await dbOne('pratiche', { code: req.params.id });
+  if (!p) return bad(res, 404, 'Pratica non trovata.');
+  ok(res, { pratica: await v20HydratePractice(p) });
+}));
+app.get('/api/practices/notifications/:role', asyncHandler(async (req, res) => {
+  const notifications = await dbSelect('practice_notifications', { target_role: req.params.role }, { order: 'created_at', limit: 100 }).catch(() => []);
+  ok(res, { notifications });
+}));
+app.post('/api/practices/:id/comment', asyncHandler(async (req, res) => {
+  const p = await dbOne('pratiche', { id: req.params.id }) || await dbOne('pratiche', { code: req.params.id });
+  if (!p) return bad(res, 404, 'Pratica non trovata.');
+  const message = String(req.body.message || '').trim();
+  if (!message) return bad(res, 400, 'Messaggio obbligatorio.');
+  const row = await v20SafeInsert('practice_messages', { pratica_id: p.id, pratica_code: p.code, message, actor_role: req.user?.role || req.body.role || 'system', actor_email: req.user?.email || req.body.email || null, actor_name: v20UserLabel(req.user || { name: req.body.name }), created_at: now() });
+  await v20AddHistory(p, `Commento interno: ${message.slice(0, 80)}`, req.user || { name: req.body.name, role: req.body.role }, req, { event_type: 'comment' });
+  ok(res, { message: row });
 }));
 app.post('/api/pratiche/:id/complete', asyncHandler(async (req, res) => {
   const old = await dbOne('pratiche', { id: req.params.id }) || await dbOne('pratiche', { code: req.params.id });

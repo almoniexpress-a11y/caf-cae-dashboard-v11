@@ -107,6 +107,10 @@
     },
     async post(path, body) { return json(path, { method: 'POST', body: JSON.stringify(body || {}) }); },
     async patch(path, body) { return json(path, { method: 'PATCH', body: JSON.stringify(body || {}) }); },
-    async get(path) { return json(path); }
+    async get(path) { return json(path); },
+    async transferPractice(id, toOwner, message, status) { return json(`/api/pratiche/${encodeURIComponent(id)}/route`, { method: 'POST', body: JSON.stringify({ team: toOwner, message, status }) }); },
+    async practiceTimeline(id) { return json(`/api/practices/${encodeURIComponent(id)}/timeline`); },
+    async practiceNotifications(role) { return json(`/api/practices/notifications/${encodeURIComponent(role)}`); },
+    async practiceComment(id, message) { return json(`/api/practices/${encodeURIComponent(id)}/comment`, { method: 'POST', body: JSON.stringify({ message }) }); }
   };
 })();

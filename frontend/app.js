@@ -2226,6 +2226,121 @@ renderItaly = function(){ v19_oldRenderItaly(); v19InjectAppointments(); };
 const v19_oldRenderAdmin = renderAdmin;
 renderAdmin = function(){ v19_oldRenderAdmin(); v19InjectAppointments(); };
 
+
+
+/* ========================= v20 Workflow Engine: Owner + Watchers + Timeline ========================= */
+function v20RoleName(role){ return ({admin:'Admin', agent:'Agente', bangla:'Team Bangla', italy:'Team Italy', commercialista:'Commercialista'})[role] || role || 'Team'; }
+function v20OwnerLabel(owner){ return v20RoleName(owner || 'bangla'); }
+function v20OwnerOptions(){ return ['bangla','italy','commercialista','admin'].map(r=>`<option value="${r}">${v20RoleName(r)}</option>`).join(''); }
+function v20AddUnique(arr=[], values=[]){ const out=[...(Array.isArray(arr)?arr:[])]; values.filter(Boolean).forEach(v=>{ if(!out.includes(v)) out.push(v); }); return out; }
+function v20NormalizePractice(p){
+  if(!p) return p;
+  const createdRole = p.createdByRole || (p.source === 'agent' ? 'agent' : p.source === 'bangla' ? 'bangla' : p.source === 'admin' ? 'admin' : p.source || 'admin');
+  const owner = p.currentOwner || p.workflowOwner || p.assignedTeam || p.routeTeam || 'bangla';
+  p.currentOwner = owner;
+  p.workflowOwner = owner;
+  p.assignedTeam = owner;
+  p.routeTeam = owner;
+  p.workflowStatus ||= p.status || 'Nuova';
+  p.workflowStep ||= p.status || 'Nuova';
+  p.progress = Number(p.progress ?? (/completata/i.test(p.status||'') ? 100 : /verifica|processing|lavorazione/i.test(p.status||'') ? 60 : /documenti/i.test(p.status||'') ? 35 : 15));
+  p.watchers = v20AddUnique(p.watchers, ['admin', owner, createdRole, p.agentEmail ? 'agent' : '', ...(p.previousOwners||[])]);
+  p.previousOwners ||= [];
+  p.teamHistory ||= [];
+  p.workflowEvents ||= p.teamHistory.map(h=>({ id:`ev-${Date.now()}-${Math.random().toString(16).slice(2)}`, date:h.date||today(), by:h.by||'System', role:h.role||'system', action:h.action||'Update', type:'history' }));
+  return p;
+}
+function v20NormalizeAll(){ STATE.pratiche ||= []; STATE.pratiche.forEach(v20NormalizePractice); STATE.practiceNotifications ||= []; STATE.practiceComments ||= []; }
+function v20CanSeePractice(p, role=STATE.session?.role, email=STATE.session?.email){
+  v20NormalizePractice(p);
+  if(role === 'admin') return true;
+  if(role === 'agent') return p.agentEmail === email || p.createdByEmail === email;
+  return p.currentOwner === role || p.assignedTeam === role || p.routeTeam === role || (p.watchers||[]).includes(role) || (p.previousOwners||[]).includes(role);
+}
+function v20CanEditPractice(p, role=STATE.session?.role){ v20NormalizePractice(p); return role === 'admin' || p.currentOwner === role; }
+function v20AddEvent(p, action, type='activity', extra={}){
+  v20NormalizePractice(p);
+  const ev = { id:`ev-${Date.now()}-${Math.random().toString(16).slice(2)}`, date:today(), time:new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}), by:STATE.session?.name||'System', role:STATE.session?.role||'system', action, type, ...extra };
+  p.workflowEvents.unshift(ev);
+  p.teamHistory.unshift({ by:ev.by, role:ev.role, action, date:today() });
+  STATE.teamActions ||= [];
+  STATE.teamActions.unshift({ id:`ta-${Date.now()}`, by:ev.by, role:ev.role, action, code:p.code, praticaId:p.id, date:today(), time:ev.time, target:extra.to||p.currentOwner });
+  return ev;
+}
+function v20Notify(targetRole, p, title, message){
+  STATE.practiceNotifications ||= [];
+  STATE.practiceNotifications.unshift({ id:`nt-${Date.now()}-${Math.random().toString(16).slice(2)}`, targetRole, praticaId:p.id, praticaCode:p.code, title, message, read:false, date:today(), time:new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}), by:STATE.session?.name||'System' });
+}
+function v20TransferTo(id, target, reason){
+  const p = STATE.pratiche.find(x=>x.id===id || x.code===id); if(!p) return showToast('Pratica non trovata.','error');
+  v20NormalizePractice(p);
+  const from = p.currentOwner || p.assignedTeam || 'bangla';
+  const to = target || prompt('Trasferisci a: bangla / italy / commercialista / admin', 'italy');
+  if(!to) return;
+  const msg = reason || prompt('Motivo trasferimento:', `Trasferita da ${v20RoleName(from)} a ${v20RoleName(to)}`) || `Trasferita a ${v20RoleName(to)}`;
+  p.previousOwners = v20AddUnique(p.previousOwners, [from]);
+  p.currentOwner = to; p.workflowOwner = to; p.assignedTeam = to; p.routeTeam = to;
+  p.status = to === 'commercialista' ? 'In lavorazione Commercialista' : to === 'italy' ? 'In verifica' : 'In lavorazione';
+  p.workflowStatus = p.status; p.workflowStep = p.status; p.progress = Math.max(Number(p.progress||0), to === 'commercialista' ? 70 : 55);
+  p.teamMessage = msg; p.updatedAt = today();
+  p.watchers = v20AddUnique(p.watchers, ['admin', from, to, p.agentEmail ? 'agent' : '']);
+  v20AddEvent(p, `Trasferita: ${v20RoleName(from)} → ${v20RoleName(to)}. ${msg}`, 'transfer', { from, to });
+  v20Notify(to, p, 'Nuova pratica assegnata', `${p.code} ricevuta da ${v20RoleName(from)}.`);
+  v20Notify('admin', p, 'Trasferimento pratica', `${p.code}: ${v20RoleName(from)} → ${v20RoleName(to)}.`);
+  if(from !== 'admin') v20Notify(from, p, 'Pratica trasferita', `${p.code} ora è in carico a ${v20RoleName(to)}.`);
+  saveState(); renderAll(); showToast(`Pratica inviata a ${v20RoleName(to)}. Rimane tracciabile per ${v20RoleName(from)}.`);
+}
+
+const v20_oldMergeOpsState = mergeOpsState;
+mergeOpsState = function(shared={}){ v20_oldMergeOpsState(shared); v20NormalizeAll(); };
+const v20_oldEnsureState = ensureState;
+ensureState = function(){ v20_oldEnsureState(); v20NormalizeAll(); };
+banglaPratiche = function(){ v20NormalizeAll(); return STATE.pratiche.filter(p => v20CanSeePractice(p,'bangla')); };
+italyPratiche = function(){ v20NormalizeAll(); return STATE.pratiche.filter(p => v20CanSeePractice(p,'italy')); };
+function commercialistaPratiche(){ v20NormalizeAll(); return STATE.pratiche.filter(p => v20CanSeePractice(p,'commercialista')); }
+
+sendToItaly = function(id){ v20TransferTo(id, 'italy', 'Pratica controllata da Bangla e inviata a Team Italy.'); };
+backToBangla = function(id){ v20TransferTo(id, 'bangla', prompt('Motivo ritorno a Team Bangla:', 'Dati/documenti da ricontrollare') || 'Ritornata a Bangla'); };
+completePratica = function(id){ const p=STATE.pratiche.find(x=>x.id===id); if(!p) return; v20NormalizePractice(p); p.status='Completata'; p.workflowStatus='Completata'; p.workflowStep='Completata'; p.progress=100; p.documentStatus='Documenti ricevuti'; p.paymentStatus=p.paymentStatus==='In attesa pagamento'?'Pagato':p.paymentStatus; p.teamMessage='Pratica completata.'; p.updatedAt=today(); v20AddEvent(p,'Pratica completata','status'); v20Notify('admin',p,'Pratica completata',`${p.code} completata da ${v20RoleName(STATE.session?.role)}.`); (p.watchers||[]).forEach(r=>r!=='admin'&&v20Notify(r,p,'Pratica completata',`${p.code} è stata completata.`)); saveState(); renderAll(); showToast('Pratica completata e notifiche inviate.'); };
+askMissing = function(id, source){ const p=STATE.pratiche.find(x=>x.id===id); if(!p) return; v20NormalizePractice(p); const docs=prompt('Scrivi documenti/dati mancanti separati da virgola:',(p.missingDocs||[]).join(', ')||'Documento identità, Delega firmata'); if(docs===null)return; p.missingDocs=docs.split(',').map(x=>x.trim()).filter(Boolean); p.documentStatus=p.missingDocs.length?'Documenti mancanti':'Documenti ricevuti'; p.status=p.missingDocs.length?'Waiting Customer / Documenti mancanti':'Documenti ricevuti'; p.workflowStatus=p.status; p.teamMessage=`${v20RoleName(STATE.session?.role||source)} richiede: ${p.missingDocs.join(', ')}`; p.updatedAt=today(); v20AddEvent(p,`Richiesti mancanti: ${p.missingDocs.join(', ')}`,'missing_docs'); v20Notify('admin',p,'Documenti mancanti',`${p.code}: ${p.missingDocs.join(', ')}`); if(p.agentEmail) v20Notify('agent',p,'Documenti mancanti',`${p.code}: ${p.missingDocs.join(', ')}`); saveState(); renderAll(); showToast('Richiesta integrazione tracciata.'); };
+italyReceiptPrompt = function(id){ const p=STATE.pratiche.find(x=>x.id===id); if(!p)return; const link=prompt('Inserisci link ricevuta/PDF o protocollo finale:',p.receiptLink||''); if(link===null)return; p.receiptLink=link; p.status='Completata'; p.workflowStatus='Completata'; p.progress=100; p.documentStatus='Documenti ricevuti'; p.teamMessage='Ricevuta/protocollo finale caricata.'; p.updatedAt=today(); STATE.receipts.unshift({id:`r-${Date.now()}`,praticaId:id,praticaCode:p.code,link,by:STATE.session.email,date:today()}); v20AddEvent(p,'Ricevuta/protocollo finale caricato','receipt'); v20Notify('admin',p,'Ricevuta caricata',`${p.code}: ricevuta finale disponibile.`); saveState(); renderAll(); openDetail(id); showToast('Ricevuta caricata e pratica completata.'); };
+
+function v20WorkflowPanel(p){ v20NormalizePractice(p); const events=(p.workflowEvents||[]).slice(0,10).map(ev=>`<div class="timeline-item"><span>${safe(ev.time||ev.date||'')}</span><div><b>${safe(ev.action)}</b><div class="meta">${safe(ev.by||'--')} · ${safe(v20RoleName(ev.role))}</div></div></div>`).join('')||'<div class="meta">Nessun evento</div>'; return `<div class="white-card v20-workflow-card"><h3>Workflow CAF CAE v20</h3><div class="v20-workflow-grid"><div><span>Owner attuale</span><b>${v20OwnerLabel(p.currentOwner)}</b></div><div><span>Status</span><b>${safe(p.workflowStatus||p.status)}</b></div><div><span>Progress</span><b>${safe(p.progress||0)}%</b></div><div><span>Watchers</span><b>${(p.watchers||[]).map(v20RoleName).join(', ')}</b></div></div><div class="progress-line"><i style="width:${Math.min(100,Number(p.progress||0))}%"></i></div><h4>Timeline live</h4><div class="timeline-list">${events}</div></div>`; }
+const v20_oldOpenDetail = openDetail;
+openDetail = function(id){
+  const p = STATE.pratiche.find(x=>x.id===id); if(!p) return;
+  v20NormalizePractice(p);
+  const role=STATE.session?.role;
+  const canEdit=v20CanEditPractice(p,role);
+  v20_oldOpenDetail(id);
+  const body=$('#detailModalBody'); if(!body) return;
+  const transferActions = canEdit || role==='admin' ? `<div class="doc-actions v20-transfer-actions"><button class="btn green" data-transfer-team="italy" data-pratica-id="${safe(p.id)}">Invia Team Italy</button><button class="btn blue" data-transfer-team="commercialista" data-pratica-id="${safe(p.id)}">Invia Commercialista</button><button class="btn light" data-transfer-team="bangla" data-pratica-id="${safe(p.id)}">Ritorna Bangla</button><button class="btn orange" data-v20-status="${safe(p.id)}">Aggiorna status</button></div>` : `<div class="status-banner">Solo tracciamento: owner attuale ${v20OwnerLabel(p.currentOwner)}.</div>`;
+  body.insertAdjacentHTML('afterbegin', v20WorkflowPanel(p) + transferActions);
+};
+
+document.body.addEventListener('click', e=>{
+  const tr=e.target.closest('[data-transfer-team]');
+  if(tr){ v20TransferTo(tr.dataset.praticaId, tr.dataset.transferTeam); }
+  const st=e.target.closest('[data-v20-status]');
+  if(st){ const p=STATE.pratiche.find(x=>x.id===st.dataset.v20Status); if(!p)return; const status=prompt('Nuovo status:', p.workflowStatus||p.status||'Processing'); if(!status)return; p.status=status; p.workflowStatus=status; p.workflowStep=status; p.progress=Number(prompt('Progress %:', p.progress||50) || p.progress || 50); p.updatedAt=today(); v20AddEvent(p,`Status aggiornato: ${status}`,'status'); v20Notify('admin',p,'Status aggiornato',`${p.code}: ${status}`); saveState(); renderAll(); openDetail(p.id); showToast('Status aggiornato e tracciato.'); }
+});
+
+function v20RenderNotifications(prefix, role){
+  const box=$(`#${prefix}V20Notifications`); if(!box) return;
+  const list=(STATE.practiceNotifications||[]).filter(n=>n.targetRole===role || (role==='admin'&&n.targetRole==='admin')).slice(0,8);
+  box.innerHTML=list.map(n=>`<div class="flat-item ${n.read?'':'agent-permission'}"><div><div class="title">🔔 ${safe(n.title)} · ${safe(n.praticaCode)}</div><div class="meta">${safe(n.time||'')} · ${safe(n.message)}<br>Da: ${safe(n.by||'System')}</div></div><button class="btn light" data-detail="${safe(n.praticaId)}">Apri</button></div>`).join('')||emptyFlat('Nessuna notifica','Le notifiche workflow appariranno qui.');
+}
+function v20InjectRolePanel(containerId, prefix, role){ const el=$(`#${containerId}`); if(!el || $(`#${prefix}V20Panel`)) return; const html=`<section class="white-card v20-role-panel" id="${prefix}V20Panel"><div class="card-head"><div><h3>Workflow Live v20</h3><p class="meta">Owner, watchers, trasferimenti e notifiche live. Le pratiche non spariscono più.</p></div><span class="chip green">${v20RoleName(role)}</span></div><div id="${prefix}V20Notifications"></div></section>`; (el.querySelector('.kpi-row')||el.firstElementChild||el).insertAdjacentHTML('afterend',html); }
+const v20_oldRenderBangla = renderBangla;
+renderBangla = function(){ v20NormalizeAll(); v20_oldRenderBangla(); v20InjectRolePanel('bangla-home','bangla','bangla'); v20RenderNotifications('bangla','bangla'); };
+const v20_oldRenderItaly = renderItaly;
+renderItaly = function(){ v20NormalizeAll(); v20_oldRenderItaly(); v20InjectRolePanel('italy-home','italy','italy'); v20RenderNotifications('italy','italy'); };
+const v20_oldRenderCommercialista = renderCommercialista;
+renderCommercialista = function(){ v20NormalizeAll(); v20_oldRenderCommercialista(); const home=$('#dashboard-commercialista .content-grid, #dashboard-commercialista'); if(home && !$('#commercialistaV20Queue')){ home.insertAdjacentHTML('afterbegin', `<section class="white-card" id="commercialistaV20Queue"><h3>Pratiche Commercialista v20</h3><div id="commercialistaV20List"></div></section>`); } const box=$('#commercialistaV20List'); if(box){ const rows=commercialistaPratiche(); box.innerHTML=rows.map(p=>`<div class="flat-item"><div><div class="title">${safe(p.code)} · ${safe(p.serviceTitle)}</div><div class="meta">${safe(fullName(p.client))} · ${safe(p.workflowStatus||p.status)} · Da ${safe((p.previousOwners||[]).map(v20RoleName).join(', ')||'--')}</div></div><button class="btn light" data-detail="${safe(p.id)}">Apri</button></div>`).join('')||emptyFlat('Nessuna pratica','Le pratiche inviate a Commercialista appariranno qui.'); } };
+const v20_oldRenderAdmin = renderAdmin;
+renderAdmin = function(){ v20NormalizeAll(); v20_oldRenderAdmin(); v20InjectRolePanel('admin-home','admin','admin'); v20RenderNotifications('admin','admin'); const tl=$('#adminTeamActions'); if(tl){ const rows=(STATE.teamActions||[]).slice(0,40); tl.innerHTML=rows.map(a=>`<div class="timeline-item"><span>${safe(a.time||a.date||'')}</span><div><b>${safe(a.action)}</b><div class="meta">${safe(a.by||'--')} · ${safe(v20RoleName(a.role))} · ${safe(a.code||'')}</div></div></div>`).join('')||emptyFlat('Nessuna azione team','Trasferimenti e status appariranno qui.'); } };
+
+
   async function boot() {
     seed();
     ensureState();
