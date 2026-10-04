@@ -2341,6 +2341,190 @@ const v20_oldRenderAdmin = renderAdmin;
 renderAdmin = function(){ v20NormalizeAll(); v20_oldRenderAdmin(); v20InjectRolePanel('admin-home','admin','admin'); v20RenderNotifications('admin','admin'); const tl=$('#adminTeamActions'); if(tl){ const rows=(STATE.teamActions||[]).slice(0,40); tl.innerHTML=rows.map(a=>`<div class="timeline-item"><span>${safe(a.time||a.date||'')}</span><div><b>${safe(a.action)}</b><div class="meta">${safe(a.by||'--')} · ${safe(v20RoleName(a.role))} · ${safe(a.code||'')}</div></div></div>`).join('')||emptyFlat('Nessuna azione team','Trasferimenti e status appariranno qui.'); } };
 
 
+
+
+/* ========================= v21 Shopify-style Supabase Native Practices ========================= */
+let v21PracticePushTimer = null;
+let v21PracticePushBusy = false;
+let v21PracticeLoading = false;
+let v21LastBackendCount = null;
+function v21ApiUrl(){ return (window.CAF_CAE_CONFIG && window.CAF_CAE_CONFIG.API_URL) || 'https://api.cafcae.it'; }
+function v21Token(){ return localStorage.getItem('caf_cae_v12_token') || localStorage.getItem('caf_cae_token') || ''; }
+function v21Headers(json=true){ const h = {}; if(json) h['Content-Type']='application/json'; const t=v21Token(); if(t) h.Authorization='Bearer '+t; return h; }
+async function v21Fetch(path, options={}){
+  const res = await fetch(v21ApiUrl()+path, { ...options, headers: { ...v21Headers(options.body !== undefined), ...(options.headers||{}) } });
+  const text = await res.text(); let data = null;
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { ok:false, raw:text }; }
+  if(!res.ok || data.ok === false) throw new Error(data.error || data.raw || `HTTP ${res.status}`);
+  return data;
+}
+function v21FromApiPractice(p={}){
+  const client = p.client_data || p.client || {};
+  return v20NormalizePractice({
+    ...p,
+    id: p.id,
+    code: p.code,
+    source: p.source || 'manual',
+    group: p.service_group || p.group || 'CAF',
+    serviceKey: p.service_key || p.serviceKey || '',
+    serviceTitle: p.service_title || p.serviceTitle || 'Pratica',
+    client,
+    agentEmail: p.agent_email || p.agentEmail || '',
+    agentName: p.agent_name || p.agentName || '',
+    routeTeam: p.route_team || p.routeTeam || p.current_owner || p.currentOwner || 'bangla',
+    assignedTeam: p.assigned_team || p.assignedTeam || p.current_owner || p.currentOwner || 'bangla',
+    currentOwner: p.current_owner || p.currentOwner || p.assigned_team || p.assignedTeam || p.route_team || p.routeTeam || 'bangla',
+    workflowOwner: p.current_owner || p.currentOwner || p.assigned_team || p.assignedTeam || 'bangla',
+    workflowStatus: p.workflow_status || p.workflowStatus || p.status || 'Nuova',
+    progress: Number(p.progress || 15),
+    watchers: p.watchers || [],
+    previousOwners: p.previous_owners || p.previousOwners || [],
+    paymentStatus: p.payment_status || p.paymentStatus || '',
+    paymentMode: p.payment_mode || p.paymentMode || '',
+    documentStatus: p.document_status || p.documentStatus || '',
+    commissionStatus: p.commission_status || p.commissionStatus || '',
+    missingDocs: p.missing_docs || p.missingDocs || [],
+    checkedDocs: p.checked_docs || p.checkedDocs || [],
+    teamMessage: p.team_message || p.teamMessage || '',
+    serviceData: p.service_data || p.serviceData || {},
+    internal730: p.internal_730 || p.internal730 || null,
+    signatureDataUrl: p.signature_data_url || p.signatureDataUrl || '',
+    receiptLink: p.receipt_link || p.receiptLink || '',
+    teamHistory: p.team_history || p.teamHistory || [],
+    workflowEvents: (p.history || p.workflowEvents || p.team_history || p.teamHistory || []).map(h => ({
+      id: h.id || `ev-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      date: (h.created_at || h.date || today()).slice(0,10),
+      time: h.time || (h.created_at ? new Date(h.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}) : ''),
+      by: h.actor_name || h.by || h.actor_email || 'System',
+      role: h.actor_role || h.role || 'system',
+      action: h.action || h.message || 'Update',
+      type: h.event_type || h.type || 'history'
+    })),
+    createdAt: (p.created_at || p.createdAt || today()).slice(0,10),
+    updatedAt: (p.updated_at || p.updatedAt || today()).slice(0,10)
+  });
+}
+function v21ToApiPractice(p={}){
+  v20NormalizePractice(p);
+  return {
+    id: (String(p.id||'').match(/^[0-9a-f-]{36}$/i) ? p.id : undefined),
+    code: p.code,
+    source: p.source || 'manual',
+    group: p.group || p.serviceGroup || 'CAF',
+    serviceKey: p.serviceKey || p.service_key || null,
+    serviceTitle: p.serviceTitle || p.service_title || 'Pratica',
+    client: p.client || p.client_data || {},
+    agentEmail: p.agentEmail || p.agent_email || null,
+    agentName: p.agentName || p.agent_name || null,
+    routeTeam: p.routeTeam || p.route_team || p.currentOwner || 'bangla',
+    assignedTeam: p.assignedTeam || p.assigned_team || p.currentOwner || 'bangla',
+    currentOwner: p.currentOwner || p.current_owner || p.assignedTeam || 'bangla',
+    workflowStatus: p.workflowStatus || p.workflow_status || p.status || 'Nuova',
+    progress: Number(p.progress || 15),
+    watchers: p.watchers || [],
+    previousOwners: p.previousOwners || p.previous_owners || [],
+    status: p.status || 'Nuova',
+    paymentStatus: p.paymentStatus || p.payment_status || 'Agent credit',
+    paymentMode: p.paymentMode || p.payment_mode || 'Credito agente',
+    documentStatus: p.documentStatus || p.document_status || 'Documenti mancanti',
+    cost: Number(p.cost || 0),
+    commission: Number(p.commission || 0),
+    commissionStatus: p.commissionStatus || p.commission_status || 'Pending',
+    missingDocs: p.missingDocs || p.missing_docs || [],
+    checkedDocs: p.checkedDocs || p.checked_docs || [],
+    uploads: p.uploads || [],
+    teamMessage: p.teamMessage || p.team_message || '',
+    serviceData: p.serviceData || p.service_data || {},
+    internal730: p.internal730 || p.internal_730 || null,
+    delega: !!p.delega,
+    privacy: !!p.privacy,
+    signature: !!p.signature,
+    signatureDataUrl: p.signatureDataUrl || p.signature_data_url || p.signature730DataUrl || '',
+    deadline: p.deadline || null,
+    receiptLink: p.receiptLink || p.receipt_link || '',
+    teamHistory: p.teamHistory || p.team_history || [],
+    createdAt: p.createdAt || p.created_at || today(),
+    updatedAt: p.updatedAt || p.updated_at || today(),
+    by: STATE.session?.name || STATE.session?.email || 'dashboard',
+    role: STATE.session?.role || 'system'
+  };
+}
+function v21PersistLocalOnly(){
+  try{
+    localStorage.setItem('caf_cae_v13_state', JSON.stringify({ ...STATE, session: null }));
+    localStorage.setItem('caf_cae_v12_state', JSON.stringify({ ...STATE, session: null }));
+  }catch(err){ console.warn('v21 local persist skipped', err); }
+}
+async function v21LoadPracticesFromBackend({ render=true, silent=true } = {}){
+  if(!STATE.session || !v21Token()) return false;
+  v21PracticeLoading = true;
+  try{
+    const role = encodeURIComponent(STATE.session.role || 'admin');
+    const email = encodeURIComponent(STATE.session.email || '');
+    const data = await v21Fetch(`/api/practices?role=${role}&email=${email}`);
+    const rows = (data.practices || data.pratiche || []).map(v21FromApiPractice);
+    STATE.pratiche = rows;
+    v21LastBackendCount = rows.length;
+    const nData = await v21Fetch(`/api/practices/notifications/${encodeURIComponent(STATE.session.role || 'admin')}`).catch(()=>null);
+    if(nData?.notifications){ STATE.practiceNotifications = nData.notifications.map(n=>({ id:n.id, targetRole:n.target_role, praticaId:n.pratica_id, praticaCode:n.pratica_code, title:n.title, message:n.message, read:!!n.is_read, date:(n.created_at||today()).slice(0,10), time:n.created_at ? new Date(n.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}) : '', by:n.actor_name||'System' })); }
+    v21PersistLocalOnly();
+    if(render) renderAll();
+    if(!silent) showToast(`Pratiche caricate dal backend: ${rows.length}`);
+    return true;
+  }catch(err){
+    console.error('v21 load practices failed', err);
+    if(!silent) showToast('Backend pratiche non raggiungibile: '+err.message, 'error');
+    return false;
+  }finally{ v21PracticeLoading = false; }
+}
+function v21SchedulePracticePush(reason='save'){
+  if(v21PracticeLoading || !STATE.session || !v21Token()) return;
+  clearTimeout(v21PracticePushTimer);
+  v21PracticePushTimer = setTimeout(()=>v21PushPracticesToBackend(reason), 600);
+}
+async function v21PushPracticesToBackend(reason='manual'){
+  if(v21PracticePushBusy || !STATE.session || !v21Token()) return false;
+  const list = (STATE.pratiche || []).filter(p => p && p.code).map(v21ToApiPractice);
+  if(!list.length) return false;
+  v21PracticePushBusy = true;
+  try{
+    const data = await v21Fetch('/api/practices/bulk-upsert', { method:'POST', body: JSON.stringify({ practices: list, reason }) });
+    const apiRows = (data.practices || data.pratiche || []).map(v21FromApiPractice);
+    if(apiRows.length){
+      const byCode = new Map(apiRows.map(p=>[p.code,p]));
+      STATE.pratiche = (STATE.pratiche||[]).map(p => byCode.get(p.code) || p);
+      // For admin/all users include rows returned by backend not already local.
+      apiRows.forEach(p => { if(!STATE.pratiche.some(x=>x.code===p.code)) STATE.pratiche.unshift(p); });
+      v21PersistLocalOnly();
+    }
+    window.__CAF_CAE_BACKEND_NATIVE_OK = true;
+    console.log('v21 practices pushed:', apiRows.length, reason);
+    return true;
+  }catch(err){
+    console.error('v21 push practices failed', err);
+    showToast('Salvataggio backend pratiche fallito: '+err.message, 'error');
+    return false;
+  }finally{ v21PracticePushBusy = false; }
+}
+const v21_oldSaveState = saveState;
+saveState = function(){
+  v21_oldSaveState();
+  v21SchedulePracticePush('saveState');
+};
+const v21_oldSetRoleDashboard = setRoleDashboard;
+setRoleDashboard = function(){
+  v21_oldSetRoleDashboard();
+  setTimeout(()=>v21LoadPracticesFromBackend({ render:true, silent:true }), 250);
+};
+const v21_oldV20TransferTo = v20TransferTo;
+v20TransferTo = function(id, target, reason){
+  v21_oldV20TransferTo(id, target, reason);
+  v21PushPracticesToBackend('transfer').then(()=>setTimeout(()=>v21LoadPracticesFromBackend({ render:true, silent:true }), 500));
+};
+window.CAF_CAE_SYNC_PRACTICES = function(){ return v21LoadPracticesFromBackend({ render:true, silent:false }); };
+window.CAF_CAE_PUSH_PRACTICES = function(){ return v21PushPracticesToBackend('manual-console'); };
+setInterval(()=>{ if(STATE.session && document.visibilityState === 'visible') v21LoadPracticesFromBackend({ render:true, silent:true }); }, 45000);
+
   async function boot() {
     seed();
     ensureState();

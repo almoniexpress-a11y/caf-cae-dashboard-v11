@@ -552,6 +552,67 @@ app.post('/api/practices/:id/transfer', asyncHandler(async (req, res) => {
   await bumpSystem('all', 'all', 'workflow transfer');
   ok(res, { pratica: updated });
 }));
+
+// CAF CAE ERP v21 Shopify-style native practices API.
+function v21FilterPracticesForRole(rows = [], role = 'admin', email = '') {
+  if (role === 'admin') return rows;
+  if (role === 'agent') return rows.filter(p => p.agent_email === email || p.created_by === email);
+  if (role === 'bangla') return rows.filter(p => v20WatchersOf(p).includes('bangla') || v20OwnerOf(p) === 'bangla' || p.assigned_team === 'bangla' || p.route_team === 'bangla');
+  if (role === 'italy') return rows.filter(p => v20WatchersOf(p).includes('italy') || v20OwnerOf(p) === 'italy' || p.assigned_team === 'italy' || p.route_team === 'italy');
+  if (role === 'commercialista') return rows.filter(p => v20WatchersOf(p).includes('commercialista') || v20OwnerOf(p) === 'commercialista' || p.service_group === 'Commercialista');
+  return rows;
+}
+
+app.get('/api/practices', requireAuth, asyncHandler(async (req, res) => {
+  const role = req.query.role || req.user?.role || 'admin';
+  const email = req.query.email || req.user?.email || '';
+  let rows = await dbSelect('pratiche', {}, { order: 'updated_at' });
+  rows = v21FilterPracticesForRole(rows, role, email);
+  ok(res, { practices: rows, pratiche: rows, count: rows.length, source: 'supabase-native-v21' });
+}));
+
+app.post('/api/practices/bulk-upsert', requireAuth, asyncHandler(async (req, res) => {
+  const incoming = Array.isArray(req.body?.practices) ? req.body.practices : [];
+  if (!incoming.length) return ok(res, { practices: [], pratiche: [], count: 0 });
+  const savedRows = [];
+  for (const raw of incoming) {
+    const payload = praticaPayload(raw || {});
+    payload.created_by = raw.createdBy || raw.created_by || payload.agent_email || req.user?.email || null;
+    payload.updated_by = req.user?.email || raw.updatedBy || raw.updated_by || null;
+    payload.watchers = v20WatchersOf(payload, [payload.assigned_team, payload.route_team, payload.current_owner]);
+    const existing = payload.code ? await dbOne('pratiche', { code: payload.code }).catch(() => null) : null;
+    let saved;
+    if (existing) {
+      saved = await dbUpdate('pratiche', existing.id, { ...payload, created_at: existing.created_at || payload.created_at });
+    } else {
+      saved = await dbInsert('pratiche', { ...payload, created_at: raw.createdAt || raw.created_at || now() });
+      await v20AddHistory(saved, 'Pratica salvata nel database centrale v21', req.user, req, { event_type: 'created', to_owner: v20OwnerOf(saved) });
+    }
+    await v20SaveWatchers(saved, v20WatchersOf(saved));
+    savedRows.push(saved);
+  }
+  await bumpSystem('all', 'all', 'v21 practices bulk upsert');
+  ok(res, { practices: savedRows, pratiche: savedRows, count: savedRows.length, source: 'supabase-native-v21' });
+}));
+
+app.post('/api/practices/:id/status', requireAuth, asyncHandler(async (req, res) => {
+  const old = await dbOne('pratiche', { id: req.params.id }) || await dbOne('pratiche', { code: req.params.id });
+  if (!old) return bad(res, 404, 'Pratica non trovata.');
+  const status = req.body.status || old.status || 'In lavorazione';
+  const progress = safeNumber(req.body.progress || old.progress || 50);
+  const updated = await dbUpdate('pratiche', old.id, {
+    status,
+    workflow_status: status,
+    progress,
+    team_message: req.body.message || old.team_message,
+    team_history: [{ by: v20UserLabel(req.user), role: req.user?.role || 'team', action: `Status aggiornato: ${status}`, date: today() }, ...(old.team_history || [])]
+  });
+  await v20AddHistory(updated, `Status aggiornato: ${status}`, req.user, req, { event_type: 'status', to_owner: v20OwnerOf(updated) });
+  await v20Notify('admin', updated, 'Status aggiornato', `${updated.code}: ${status}`, req.user || {});
+  await bumpSystem('all', 'all', 'v21 status update');
+  ok(res, { practice: updated, pratica: updated });
+}));
+
 app.get('/api/practices/:id/timeline', asyncHandler(async (req, res) => {
   const p = await dbOne('pratiche', { id: req.params.id }) || await dbOne('pratiche', { code: req.params.id });
   if (!p) return bad(res, 404, 'Pratica non trovata.');
