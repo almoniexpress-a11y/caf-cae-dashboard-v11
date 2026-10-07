@@ -77,7 +77,8 @@ const TABLES = [
   'agent_clients', 'agent_credit_transactions', 'agent_credit_requests', 'modify_requests', 'companies', 'invoices',
   'comm_sales', 'comm_f24', 'comm_employees', 'comm_documents', 'comm_deadlines', 'comm_backups', 'communications',
   'tickets', 'operational_notices', 'sources', 'team_daily_reports', 'receipts', 'practice_history', 'practice_watchers', 'practice_notifications', 'practice_messages', 'audit_logs', 'client_versions', 'shopify_sync_logs',
-  'webhook_events', 'admin_product_prices', 'admin_promotions', 'admin_popups', 'admin_complaints', 'admin_manual_sales', 'salary_payments', 'commission_payments', 'portal_settings'
+  'webhook_events', 'admin_product_prices', 'admin_promotions', 'admin_popups', 'admin_complaints', 'admin_manual_sales', 'salary_payments', 'commission_payments', 'portal_settings',
+  'v22_clients', 'practice_files', 'v22_team_members', 'v22_daily_work_reports', 'v22_agent_credit_requests', 'v22_agent_credit_ledger', 'v22_membership_results', 'v22_tickets', 'v22_commercialista_packages', 'v22_company_packages', 'v22_notifications'
 ];
 for (const t of TABLES) memory.set(t, []);
 
@@ -576,7 +577,8 @@ app.post('/api/practices/bulk-upsert', requireAuth, asyncHandler(async (req, res
   if (!incoming.length) return ok(res, { practices: [], pratiche: [], count: 0 });
   const savedRows = [];
   for (const raw of incoming) {
-    const payload = praticaPayload(raw || {});
+    let payload = praticaPayload(raw || {});
+    payload = v22SanitizePracticeForAgent(payload, req.user || {});
     payload.created_by = raw.createdBy || raw.created_by || payload.agent_email || req.user?.email || null;
     payload.updated_by = req.user?.email || raw.updatedBy || raw.updated_by || null;
     payload.watchers = v20WatchersOf(payload, [payload.assigned_team, payload.route_team, payload.current_owner]);
@@ -878,6 +880,255 @@ app.post('/api/shopify/webhooks/:topic', asyncHandler(async (req, res) => {
   let payload = {}; try { payload = JSON.parse(raw); } catch { payload = { raw }; }
   await dbInsert('webhook_events', { provider: 'shopify', event_type: req.params.topic, payload, shopify_shop: req.get('X-Shopify-Shop-Domain') || process.env.SHOPIFY_SHOP });
   ok(res);
+}));
+
+
+/* ========================= CAF CAE ERP v22 core APIs ========================= */
+function v22SlugFile(name='file') {
+  const cleaned = String(name || 'file').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').slice(0, 120);
+  return cleaned || `file-${Date.now()}`;
+}
+async function v22FindPractice(idOrCode) {
+  return await dbOne('pratiche', { id: idOrCode }).catch(()=>null) || await dbOne('pratiche', { code: idOrCode }).catch(()=>null);
+}
+function v22ClientPayload(raw = {}, user = {}) {
+  const first = raw.first_name || raw.firstName || raw.first || '';
+  const last = raw.last_name || raw.lastName || raw.last || '';
+  return {
+    owner_role: raw.owner_role || user.role || null,
+    owner_email: raw.owner_email || user.email || null,
+    created_by: raw.created_by || user.email || null,
+    first_name: first,
+    last_name: last,
+    full_name: raw.full_name || raw.name || `${last} ${first}`.trim(),
+    cf: String(raw.cf || raw.codice_fiscale || '').toUpperCase(),
+    email: raw.email || '',
+    phone: raw.phone || raw.telefono || '',
+    whatsapp: raw.whatsapp || raw.phone || '',
+    address: raw.address || raw.indirizzo || '',
+    city: raw.city || raw.comune || '',
+    province: raw.province || raw.provincia || '',
+    cap: raw.cap || '',
+    country: raw.country || raw.paese || 'Italia',
+    language: raw.language || raw.lingua || 'Italiano',
+    agent_email: raw.agent_email || raw.agentEmail || (user.role === 'agent' ? user.email : null),
+    assigned_team: raw.assigned_team || raw.assignedTeam || null,
+    membership_status: raw.membership_status || raw.membershipStatus || null,
+    membership_type: raw.membership_type || raw.membershipType || null,
+    metadata: raw.metadata || raw
+  };
+}
+function v22FilterClientsForRole(rows = [], user = {}) {
+  const role = user.role || 'admin';
+  if (role === 'admin' || role === 'bangla') return rows;
+  if (role === 'agent') return rows.filter(c => c.agent_email === user.email || c.owner_email === user.email || c.created_by === user.email);
+  if (role === 'italy') return rows.filter(c => c.assigned_team === 'italy' || c.owner_role === 'italy');
+  if (role === 'commercialista') return rows.filter(c => c.owner_role === 'commercialista' || c.assigned_team === 'commercialista');
+  return rows;
+}
+function v22SanitizePracticeForAgent(raw = {}, user = {}) {
+  const p = praticaPayload(raw || {});
+  if ((user.role || '') === 'agent') {
+    p.agent_email = p.agent_email || user.email;
+    p.agent_name = p.agent_name || user.name;
+    p.route_team = 'bangla';
+    p.assigned_team = 'bangla';
+    p.current_owner = 'bangla';
+    p.status = p.status || 'Nuova';
+    p.workflow_status = p.workflow_status || 'In attesa controllo Team Bangla';
+    p.progress = p.progress || 15;
+    p.watchers = v20Unique(['admin', 'bangla', 'agent']);
+    p.team_message = p.team_message || 'Nuova pratica agente: primo controllo Team Bangla.';
+  }
+  return p;
+}
+async function v22Notify(target_role, title, message, user, entity = {}) {
+  const row = await dbInsert('v22_notifications', {
+    target_role, target_email: entity.target_email || null, title, message, type: entity.type || 'info',
+    entity_type: entity.entity_type || 'practice', entity_id: entity.entity_id || entity.id || null,
+    created_at: now()
+  }).catch(()=>null);
+  return row;
+}
+
+app.get('/api/v22/clients', requireAuth, asyncHandler(async (req, res) => {
+  let rows = await dbSelect('v22_clients', {}, { order: 'updated_at' });
+  const q = String(req.query.q || '').toLowerCase().trim();
+  rows = v22FilterClientsForRole(rows, req.user);
+  if (q) rows = rows.filter(c => JSON.stringify(c).toLowerCase().includes(q));
+  ok(res, { clients: rows, count: rows.length, source: 'v22-clients' });
+}));
+app.post('/api/v22/clients/upsert', requireAuth, asyncHandler(async (req, res) => {
+  const payload = v22ClientPayload(req.body.client || req.body || {}, req.user);
+  const match = payload.cf ? { cf: payload.cf } : (payload.email ? { email: payload.email } : { phone: payload.phone });
+  if (!match.cf && !match.email && !match.phone) return bad(res, 400, 'CF, email o telefono obbligatorio per salvare cliente.');
+  const existing = await dbOne('v22_clients', match).catch(()=>null);
+  const row = existing ? await dbUpdate('v22_clients', existing.id, { ...payload, created_at: existing.created_at }) : await dbInsert('v22_clients', payload);
+  ok(res, { client: row });
+}));
+
+app.post('/api/v22/practices', requireAuth, asyncHandler(async (req, res) => {
+  const payload = v22SanitizePracticeForAgent(req.body.practice || req.body || {}, req.user);
+  if (!payload.code) payload.code = `CAF-${today().slice(0,4)}-${nanoid(6).toUpperCase()}`;
+  const saved = await dbUpsert('pratiche', { code: payload.code }, { ...payload, created_by: payload.created_by || req.user.email, updated_by: req.user.email });
+  await v20SaveWatchers(saved, v20WatchersOf(saved, ['admin', 'bangla']));
+  await v20AddHistory(saved, req.user.role === 'agent' ? 'Pratica creata da agente e inviata a Team Bangla' : 'Pratica creata v22', req.user, req, { event_type: 'created', to_owner: v20OwnerOf(saved) });
+  await v22Notify('bangla', 'Nuova pratica da agente', `${saved.code} deve essere controllata e autorizzata.`, req.user, { entity_id: saved.id });
+  await v22Notify('admin', 'Nuova pratica creata', `${saved.code} creata da ${v20UserLabel(req.user)}.`, req.user, { entity_id: saved.id });
+  ok(res, { practice: saved, pratica: saved });
+}));
+app.post('/api/v22/practices/:id/authorize', requireAuth, asyncHandler(async (req, res) => {
+  if (!['admin','bangla'].includes(req.user.role)) return bad(res, 403, 'Solo Admin o Team Bangla possono autorizzare.');
+  const old = await v22FindPractice(req.params.id); if (!old) return bad(res, 404, 'Pratica non trovata.');
+  const target = req.body.target || req.body.to || 'italy';
+  const message = req.body.message || `Autorizzata da ${v20RoleLabel(req.user.role)} e inviata a ${v20RoleLabel(target)}`;
+  const watchers = v20WatchersOf(old, ['admin','bangla',target, old.agent_email ? 'agent' : null]);
+  const updated = await dbUpdate('pratiche', old.id, {
+    current_owner: target, assigned_team: target, route_team: target, watchers,
+    status: target === 'italy' ? 'In verifica Team Italy' : 'In lavorazione',
+    workflow_status: target === 'italy' ? 'Autorizzata da Team Bangla' : 'Autorizzata',
+    progress: target === 'italy' ? 55 : 45,
+    team_message: message,
+    team_history: [{ by: v20UserLabel(req.user), role: req.user.role, action: message, date: today(), at: now() }, ...(old.team_history || [])]
+  });
+  await v20SaveWatchers(updated, watchers);
+  await v20AddHistory(updated, message, req.user, req, { event_type: 'authorize', from_owner: v20OwnerOf(old), to_owner: target });
+  await v22Notify(target, 'Pratica autorizzata', `${updated.code} ricevuta da Team Bangla.`, req.user, { entity_id: updated.id });
+  await v22Notify('admin', 'Pratica autorizzata', `${updated.code}: ${v20RoleLabel(req.user.role)} → ${v20RoleLabel(target)}.`, req.user, { entity_id: updated.id });
+  ok(res, { practice: updated, pratica: updated });
+}));
+app.post('/api/v22/practices/:id/assign', requireAuth, asyncHandler(async (req, res) => {
+  if (!['admin','bangla','italy','commercialista'].includes(req.user.role)) return bad(res, 403, 'Permesso insufficiente.');
+  const old = await v22FindPractice(req.params.id); if (!old) return bad(res, 404, 'Pratica non trovata.');
+  const staff_email = req.body.staff_email || req.body.email || null;
+  const staff_name = req.body.staff_name || req.body.name || null;
+  const updated = await dbUpdate('pratiche', old.id, { service_data: { ...(old.service_data || {}), assigned_staff_email: staff_email, assigned_staff_name: staff_name }, updated_by: req.user.email });
+  await v20AddHistory(updated, `Assegnata a ${staff_name || staff_email || 'staff'}`, req.user, req, { event_type: 'assignment' });
+  ok(res, { practice: updated, pratica: updated });
+}));
+
+app.get('/api/practices/:id/files', requireAuth, asyncHandler(async (req, res) => {
+  const p = await v22FindPractice(req.params.id); if (!p) return bad(res, 404, 'Pratica non trovata.');
+  const files = await dbSelect('practice_files', { pratica_id: p.id }, { order: 'created_at' }).catch(()=>[]);
+  ok(res, { files, count: files.length });
+}));
+app.post('/api/practices/:id/files/upload', requireAuth, upload.array('files', 12), asyncHandler(async (req, res) => {
+  const p = await v22FindPractice(req.params.id); if (!p) return bad(res, 404, 'Pratica non trovata.');
+  const uploaded = [];
+  for (const file of (req.files || [])) {
+    const path = `practices/${p.id}/${Date.now()}-${nanoid(6)}-${v22SlugFile(file.originalname)}`;
+    let signedUrl = null;
+    if (supabase) {
+      const { error } = await supabase.storage.from(bucket).upload(path, file.buffer, { contentType: file.mimetype, upsert: true });
+      if (error) throw error;
+      const signed = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60 * 24 * 7);
+      signedUrl = signed.data?.signedUrl || null;
+    }
+    const row = await dbInsert('practice_files', {
+      pratica_id: p.id, pratica_code: p.code, client_id: p.client_id || null, company_id: p.company_id || null,
+      category: req.body.category || (req.body.is_receipt === 'true' ? 'ricevuta' : 'documento'),
+      visibility: req.body.visibility || 'internal', file_name: file.originalname, file_path: path, file_url: signedUrl,
+      mime_type: file.mimetype, size_bytes: file.size, uploaded_by_role: req.user.role, uploaded_by_email: req.user.email,
+      uploaded_by_name: v20UserLabel(req.user), note: req.body.note || '', is_receipt: req.body.is_receipt === 'true'
+    });
+    uploaded.push(row);
+  }
+  await v20AddHistory(p, `${uploaded.length} documento/i caricato/i`, req.user, req, { event_type: 'file_upload' });
+  await v22Notify('admin', 'Documento caricato', `${p.code}: ${uploaded.length} nuovo/i allegato/i.`, req.user, { entity_id: p.id, type: 'file' });
+  ok(res, { files: uploaded, count: uploaded.length });
+}));
+app.get('/api/files/:id/download', requireAuth, asyncHandler(async (req, res) => {
+  const f = await dbOne('practice_files', { id: req.params.id });
+  if (!f) return bad(res, 404, 'File non trovato.');
+  if (!supabase) return bad(res, 501, 'Storage non configurato.');
+  const signed = await supabase.storage.from(bucket).createSignedUrl(f.file_path, 60 * 10, { download: f.file_name });
+  if (signed.error) throw signed.error;
+  res.redirect(signed.data.signedUrl);
+}));
+app.get('/api/files/:id/preview', requireAuth, asyncHandler(async (req, res) => {
+  const f = await dbOne('practice_files', { id: req.params.id });
+  if (!f) return bad(res, 404, 'File non trovato.');
+  if (!supabase) return bad(res, 501, 'Storage non configurato.');
+  const signed = await supabase.storage.from(bucket).createSignedUrl(f.file_path, 60 * 10);
+  if (signed.error) throw signed.error;
+  res.redirect(signed.data.signedUrl);
+}));
+
+app.get('/api/v22/team-members', requireAuth, asyncHandler(async (req, res) => {
+  const role = req.query.team_role || req.query.role;
+  const rows = await dbSelect('v22_team_members', role ? { team_role: role } : {}, { order: 'updated_at' }).catch(()=>[]);
+  ok(res, { members: rows, count: rows.length });
+}));
+app.post('/api/v22/team-members', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const row = await dbUpsert('v22_team_members', { team_role: req.body.team_role, user_email: req.body.user_email }, req.body);
+  ok(res, { member: row });
+}));
+app.post('/api/v22/team/daily-report', requireAuth, asyncHandler(async (req, res) => {
+  const row = await dbInsert('v22_daily_work_reports', {
+    team_role: req.body.team_role || req.user.role,
+    employee_email: req.user.email,
+    employee_name: v20UserLabel(req.user),
+    done_count: safeNumber(req.body.done_count || req.body.done),
+    pending_count: safeNumber(req.body.pending_count || req.body.pending),
+    issue_count: safeNumber(req.body.issue_count || req.body.issues),
+    note: req.body.note || '',
+    report_date: req.body.report_date || today(),
+    metadata: req.body.metadata || {}
+  });
+  await v22Notify('admin', 'Report giornaliero team', `${v20UserLabel(req.user)} ha inviato report (${row.team_role}).`, req.user, { entity_id: row.id, type: 'daily_report' });
+  ok(res, { report: row });
+}));
+
+app.get('/api/v22/membership/results', requireAuth, asyncHandler(async (req, res) => {
+  const rows = await dbSelect('v22_membership_results', {}, { order: 'updated_at' }).catch(()=>[]);
+  ok(res, { results: rows, count: rows.length });
+}));
+app.post('/api/v22/membership/results', requireAuth, asyncHandler(async (req, res) => {
+  const row = await dbInsert('v22_membership_results', req.body || {});
+  ok(res, { result: row });
+}));
+app.get('/api/v22/agent/:email/credit', requireAuth, asyncHandler(async (req, res) => {
+  const ledger = await dbSelect('v22_agent_credit_ledger', { agent_email: req.params.email }, { order: 'created_at' }).catch(()=>[]);
+  const balance = ledger.reduce((s,t)=>s + (String(t.type).toLowerCase()==='plus' ? safeNumber(t.amount) : -safeNumber(t.amount)), 0);
+  ok(res, { balance, ledger });
+}));
+app.post('/api/v22/agent/credit-request', requireAuth, asyncHandler(async (req, res) => {
+  const row = await dbInsert('v22_agent_credit_requests', {
+    agent_email: req.body.agent_email || req.user.email,
+    agent_name: req.body.agent_name || v20UserLabel(req.user),
+    phone: req.body.phone || req.user.phone || '',
+    amount: safeNumber(req.body.amount), payment_method: req.body.payment_method || '', proof_url: req.body.proof_url || '', note: req.body.note || ''
+  });
+  await v22Notify('admin', 'Richiesta credito agente', `${row.agent_name} richiede credito ${row.amount}€ · ${row.phone || 'telefono non indicato'}.`, req.user, { entity_id: row.id, type: 'credit' });
+  ok(res, { request: row });
+}));
+app.post('/api/v22/agent/credit-request/:id/approve', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const old = await dbOne('v22_agent_credit_requests', { id: req.params.id }); if (!old) return bad(res, 404, 'Richiesta non trovata.');
+  const approved = await dbUpdate('v22_agent_credit_requests', old.id, { status: 'Approvata', verified_by: req.user.email, verified_at: now() });
+  const current = await dbSelect('v22_agent_credit_ledger', { agent_email: old.agent_email }, { order: 'created_at' }).catch(()=>[]);
+  const balance = current.reduce((s,t)=>s + (String(t.type).toLowerCase()==='plus' ? safeNumber(t.amount) : -safeNumber(t.amount)), 0) + safeNumber(old.amount);
+  await dbInsert('v22_agent_credit_ledger', { agent_email: old.agent_email, agent_name: old.agent_name, type: 'plus', amount: safeNumber(old.amount), balance_after: balance, reason: 'Credito approvato da admin', created_by: req.user.email });
+  await v22Notify('agent', 'Credito approvato', `Credito ${old.amount}€ approvato.`, req.user, { target_email: old.agent_email, entity_id: old.id, type: 'credit' });
+  ok(res, { request: approved, balance });
+}));
+app.get('/api/v22/tickets', requireAuth, asyncHandler(async (req, res) => {
+  let rows = await dbSelect('v22_tickets', {}, { order: 'created_at' }).catch(()=>[]);
+  if (req.user.role !== 'admin') rows = rows.filter(t => t.source_email === req.user.email || t.target_role === req.user.role);
+  ok(res, { tickets: rows, count: rows.length });
+}));
+app.post('/api/v22/tickets', requireAuth, asyncHandler(async (req, res) => {
+  const row = await dbInsert('v22_tickets', { ...req.body, source_role: req.user.role, source_email: req.user.email, source_name: v20UserLabel(req.user) });
+  await v22Notify(req.body.target_role || 'admin', 'Nuovo ticket', `${v20UserLabel(req.user)}: ${row.subject}`, req.user, { entity_id: row.id, type: 'ticket' });
+  ok(res, { ticket: row });
+}));
+app.get('/api/v22/commercialista/packages', requireAuth, asyncHandler(async (req, res) => {
+  const rows = await dbSelect('v22_commercialista_packages', { active: true }, { order: 'monthly_price', ascending: true }).catch(()=>[]);
+  ok(res, { packages: rows });
+}));
+app.get('/api/v22/notifications', requireAuth, asyncHandler(async (req, res) => {
+  const rows = await dbSelect('v22_notifications', {}, { order: 'created_at', limit: 100 }).catch(()=>[]);
+  const filtered = rows.filter(n => !n.target_role || n.target_role === req.user.role || n.target_role === 'all' || n.target_email === req.user.email || req.user.role === 'admin');
+  ok(res, { notifications: filtered, count: filtered.length });
 }));
 
 app.use((err, req, res, _next) => {

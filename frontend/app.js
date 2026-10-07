@@ -2525,6 +2525,99 @@ window.CAF_CAE_SYNC_PRACTICES = function(){ return v21LoadPracticesFromBackend({
 window.CAF_CAE_PUSH_PRACTICES = function(){ return v21PushPracticesToBackend('manual-console'); };
 setInterval(()=>{ if(STATE.session && document.visibilityState === 'visible') v21LoadPracticesFromBackend({ render:true, silent:true }); }, 45000);
 
+
+/* ========================= CAF CAE ERP v22 Premium Workflow + Storage UI ========================= */
+function v22ApiUrl(){ return (window.CAF_CAE_CONFIG && window.CAF_CAE_CONFIG.API_URL) || 'https://api.cafcae.it'; }
+function v22Token(){ return localStorage.getItem('caf_cae_v12_token') || localStorage.getItem('caf_cae_token') || ''; }
+function v22Headers(json=true){ const h={}; if(json) h['Content-Type']='application/json'; const t=v22Token(); if(t) h.Authorization='Bearer '+t; return h; }
+async function v22Fetch(path, options={}){
+  const res = await fetch(v22ApiUrl()+path, { ...options, headers:{ ...v22Headers(options.body !== undefined && !(options.body instanceof FormData)), ...(options.headers||{}) } });
+  const text = await res.text(); let data={}; try{ data=text?JSON.parse(text):{}; }catch{ data={ raw:text }; }
+  if(!res.ok || data.ok===false) throw new Error(data.error || data.raw || `HTTP ${res.status}`);
+  return data;
+}
+function v22RoleLabel(role){ return ({admin:'Admin',agent:'Agente',bangla:'Team Bangla',italy:'Team Italy',commercialista:'Commercialista'})[role] || role || 'Team'; }
+function v22RoleHomeEl(){ const r=STATE.session?.role; return $(`#${r==='admin'?'admin':r}-home`) || document.querySelector('.dashboard-page:not(.hidden) .content-panel') || document.querySelector('main'); }
+function v22PracticeStats(){ const rows=STATE.pratiche||[]; return {total:rows.length,bangla:rows.filter(p=>(p.currentOwner||p.assignedTeam)==='bangla').length,italy:rows.filter(p=>(p.currentOwner||p.assignedTeam)==='italy').length,comm:rows.filter(p=>(p.currentOwner||p.assignedTeam)==='commercialista').length,missing:rows.filter(p=>(p.missingDocs||[]).length||/manc/i.test(p.documentStatus||'')).length,done:rows.filter(p=>/complet/i.test(p.status||'')).length,membership:rows.filter(p=>/membership|mamma|beb/i.test(JSON.stringify(p).toLowerCase())).length}; }
+function v22DarkHero(title, subtitle, actions=''){
+  return `<section class="v22-hero"><div><span class="v22-chip">CAF CAE ERP v22</span><h2>${safe(title)}</h2><p>${safe(subtitle)}</p></div><div class="v22-hero-actions">${actions}</div></section>`;
+}
+function v22Kpis(items){ return `<section class="v22-kpis">${items.map(x=>`<div class="v22-kpi"><span class="v22-icon"><i class="fa-solid ${x.icon||'fa-chart-line'}"></i></span><small>${safe(x.label)}</small><b>${safe(x.value)}</b><em>${safe(x.hint||'live')}</em></div>`).join('')}</section>`; }
+function v22ProgressFlow(){ return `<div class="v22-flow"><div><b>1</b><span>Agente crea</span></div><i></i><div class="active"><b>2</b><span>Team Bangla autorizza</span></div><i></i><div><b>3</b><span>Team Italy lavora</span></div><i></i><div><b>4</b><span>Completata</span></div></div>`; }
+function v22EnsureRoleDesign(){
+  if(!STATE.session) return;
+  document.body.classList.add('v22-dark-green');
+  const home=v22RoleHomeEl(); if(!home || home.querySelector('.v22-role-shell')) return;
+  const role=STATE.session.role; const stats=v22PracticeStats();
+  const commonActions=`<button class="btn orange" data-v22-new-practice><i class="fa-solid fa-plus"></i> Nuova pratica</button><button class="btn green" data-v22-request-notifications><i class="fa-solid fa-bell"></i> Notifiche Chrome</button>`;
+  let html='';
+  if(role==='admin') html = v22DarkHero('Centro operativo totale','Controllo completo di pratiche, agenti, team, membership, crediti e documenti.', commonActions+`<button class="btn light" data-v22-credit-admin>Credito agenti</button>`)+v22Kpis([{label:'Pratiche totali',value:stats.total,icon:'fa-folder-open'},{label:'Team Bangla',value:stats.bangla,icon:'fa-people-group'},{label:'Team Italy',value:stats.italy,icon:'fa-paper-plane'},{label:'Commercialista',value:stats.comm,icon:'fa-building-columns'},{label:'Documenti mancanti',value:stats.missing,icon:'fa-triangle-exclamation'},{label:'Membership',value:stats.membership,icon:'fa-crown'}]);
+  if(role==='bangla') html = v22DarkHero('Team Bangla Control Center','Ricevi ordini dagli agenti, verifica documenti, gestisci clienti, autorizza e trasferisci a Team Italy.', `<button class="btn orange" data-v22-new-practice>Nuova pratica</button><button class="btn light" data-v22-new-client>Nuovo cliente</button><button class="btn green" data-v22-daily-report>Report giornaliero</button>`)+v22Kpis([{label:'Nuove da agenti',value:stats.bangla,icon:'fa-inbox'},{label:'Da verificare',value:stats.missing,icon:'fa-magnifying-glass'},{label:'Pronte Italy',value:STATE.pratiche.filter(p=>(p.currentOwner||p.assignedTeam)==='bangla' && !(p.missingDocs||[]).length).length,icon:'fa-paper-plane'},{label:'Clienti salvati',value:(STATE.agentClients||[]).length,icon:'fa-users'},{label:'Membership',value:stats.membership,icon:'fa-crown'}])+v22ProgressFlow();
+  if(role==='italy') html = v22DarkHero('Team Italy Processing','Ricevi solo pratiche autorizzate da Team Bangla, completa il lavoro e carica ricevute.', `<button class="btn orange" data-v22-open-assigned>Apri assegnate</button><button class="btn light" data-v22-upload-receipt>Carica ricevuta</button><button class="btn light" data-v22-return-bangla>Ritorna Bangla</button>`)+v22Kpis([{label:'Assegnate',value:stats.italy,icon:'fa-folder-open'},{label:'In revisione',value:STATE.pratiche.filter(p=>(p.currentOwner||p.assignedTeam)==='italy' && !/complet/i.test(p.status||'')).length,icon:'fa-clock'},{label:'Completate',value:stats.done,icon:'fa-circle-check'},{label:'Integrazioni',value:stats.missing,icon:'fa-file-circle-exclamation'}]);
+  if(role==='agent') html = v22DarkHero('Area Agente','Crea pratiche, salva clienti, controlla credito, membership e profitto in tempo reale.', `<button class="btn orange" data-v22-new-practice>Nuova pratica</button><button class="btn blue" data-v22-membership>Nuova membership</button>`)+v22Kpis([{label:'Le mie pratiche',value:agentPratiche().length,icon:'fa-file-lines'},{label:'Credito disponibile',value:money(agentCredit()),icon:'fa-wallet'},{label:'Profitto stimato',value:money(agentPratiche().reduce((s,p)=>s+Math.max(0,Number(p.serviceData?.clientPaid||p.cost||0)-Number(p.cost||0)),0)),icon:'fa-sack-dollar'},{label:'Membership',value:stats.membership,icon:'fa-crown'}]);
+  if(role==='commercialista') html = v22DarkHero('Area Commercialista','Gestione ditte, documenti, F24, fatture, buste paga, piani e clienti collegati a Shopify.', `<button class="btn orange" data-comm-step="comm-step-client">Nuova ditta</button><button class="btn light" data-v22-upload-company-doc>Carica documenti</button>`)+v22Kpis([{label:'Clienti/Ditte',value:STATE.companies.length,icon:'fa-building'},{label:'Fatture',value:STATE.invoices.length,icon:'fa-file-invoice'},{label:'Documenti',value:(STATE.commDocuments||[]).length,icon:'fa-folder'},{label:'Piani attivi',value:'3',icon:'fa-crown'}]);
+  if(html) home.insertAdjacentHTML('afterbegin', `<div class="v22-role-shell">${html}</div>`);
+}
+function v22RefreshRoleTables(){
+  const role=STATE.session?.role;
+  if(role==='bangla' && $('#banglaInboxTable')) {
+    const rows=banglaPratiche();
+    $('#banglaInboxTable').innerHTML = table(['Codice','Cliente','Servizio','Owner','Docs','Staff','Azioni'], rows.map(p=>[p.code,fullName(p.client),p.serviceTitle,statusChip(p.status),p.documentStatus || '--', safe(p.serviceData?.assigned_staff_name || '--'), `<button class="btn light" data-detail="${p.id}">Apri</button> <button class="btn green" data-v22-authorize="${p.id}">Autorizza Italy</button> <button class="btn orange" data-bangla-missing="${p.id}">Mancanti</button> <button class="btn light" data-v22-upload-practice="${p.id}">Upload</button>`]));
+  }
+  if(role==='italy' && $('#italyAllTable')) {
+    const rows=italyPratiche();
+    $('#italyAllTable').innerHTML = table(['Codice','Cliente','Servizio','Stato','Docs','Progress','Azioni'], rows.map(p=>[p.code,fullName(p.client),p.serviceTitle,statusChip(p.status),p.documentStatus || '--', `<div class="mini-progress"><span style="width:${Number(p.progress||0)}%"></span></div> ${Number(p.progress||0)}%`, `<button class="btn light" data-detail="${p.id}">Apri full</button> <button class="btn green" data-complete="${p.id}">Completa</button> <button class="btn orange" data-v22-upload-receipt="${p.id}">Ricevuta</button> <button class="btn light" data-v22-return-bangla="${p.id}">Ritorna Bangla</button>`]));
+  }
+}
+async function v22LoadPracticeFiles(id){ try{ return (await v22Fetch(`/api/practices/${encodeURIComponent(id)}/files`)).files || []; }catch(err){ console.warn('v22 files load failed',err); return []; } }
+async function v22EnhanceDetail(id){
+  const body=$('#detailModalBody'); if(!body || body.querySelector('#v22FilesPanel')) return;
+  const p=(STATE.pratiche||[]).find(x=>x.id===id||x.code===id); if(!p) return;
+  body.insertAdjacentHTML('afterbegin', `<section class="v22-detail-head"><div><small>Workflow CAF CAE v22</small><h3>${safe(p.code)}</h3><p>${safe(p.serviceTitle)} · owner ${safe(p.currentOwner||p.assignedTeam||'--')}</p></div><div><button class="btn green" data-v22-authorize="${p.id}">Autorizza/Invia Italy</button><button class="btn orange" data-v22-upload-practice="${p.id}">Carica allegati</button><button class="btn light" data-v22-upload-receipt="${p.id}">Carica ricevuta</button></div></section>`);
+  body.insertAdjacentHTML('beforeend', `<section id="v22FilesPanel" class="white-card v22-files"><div class="card-head"><h3>Allegati backend / preview</h3><button class="btn green" data-v22-upload-practice="${p.id}">+ Upload</button></div><div id="v22FileList" class="v22-file-list"><div class="meta">Caricamento documenti...</div></div></section>`);
+  const files=await v22LoadPracticeFiles(p.id);
+  const list=$('#v22FileList'); if(list) list.innerHTML = files.length ? files.map(f=>`<div class="v22-file-row"><i class="fa-solid ${/pdf/i.test(f.mime_type||'')?'fa-file-pdf':'fa-file'}"></i><div><b>${safe(f.file_name)}</b><small>${safe(f.category)} · ${Math.round((f.size_bytes||0)/1024)} KB · ${safe(f.uploaded_by_name||'')}</small></div><a class="btn light" target="_blank" href="${v22ApiUrl()}/api/files/${f.id}/preview?token=${encodeURIComponent(v22Token())}">Preview</a><a class="btn green" target="_blank" href="${v22ApiUrl()}/api/files/${f.id}/download?token=${encodeURIComponent(v22Token())}">Download</a></div>`).join('') : emptyFlat('Nessun allegato backend','Carica documenti per renderli visibili a tutti i team.');
+}
+async function v22UploadFiles(practiceId, opts={}){
+  const input=document.createElement('input'); input.type='file'; input.multiple=true; input.accept='.pdf,image/*,.doc,.docx,.xls,.xlsx';
+  input.onchange=async()=>{
+    if(!input.files.length) return;
+    const fd=new FormData(); [...input.files].forEach(f=>fd.append('files', f)); fd.append('category', opts.category || (opts.receipt?'ricevuta':'documento')); fd.append('is_receipt', opts.receipt?'true':'false');
+    try{
+      const res=await fetch(`${v22ApiUrl()}/api/practices/${encodeURIComponent(practiceId)}/files/upload`, { method:'POST', headers:{ Authorization:'Bearer '+v22Token() }, body:fd });
+      const data=await res.json(); if(!res.ok || data.ok===false) throw new Error(data.error||'Upload fallito');
+      showToast(`Caricati ${data.count||data.files?.length||0} allegati backend.`);
+      openDetail(practiceId);
+    }catch(err){ showToast('Upload fallito: '+err.message, 'error'); }
+  };
+  input.click();
+}
+async function v22AuthorizePractice(id,target='italy'){
+  try{ const data=await v22Fetch(`/api/v22/practices/${encodeURIComponent(id)}/authorize`, { method:'POST', body:JSON.stringify({ target, message:'Autorizzata da Team Bangla e inviata a Team Italy' }) }); showToast('Pratica autorizzata e inviata a Team Italy.'); await v21LoadPracticesFromBackend({render:true,silent:true}); return data; }catch(err){ showToast('Autorizzazione fallita: '+err.message,'error'); }
+}
+async function v22ReturnBangla(id){ try{ await v22Fetch(`/api/practices/${encodeURIComponent(id)}/transfer`, { method:'POST', body:JSON.stringify({ team:'bangla', message:'Ritornata a Team Bangla per integrazione', status:'Documenti mancanti', progress:40 }) }); showToast('Pratica ritornata a Team Bangla.'); await v21LoadPracticesFromBackend({render:true,silent:true}); }catch(err){ showToast('Ritorno Bangla fallito: '+err.message,'error'); } }
+async function v22SendDailyReport(){ const done=prompt('Quante pratiche completate oggi?','0'); if(done===null) return; const pending=prompt('Quante pratiche pending?','0')||0; const issues=prompt('Problemi/criticità? numero','0')||0; const note=prompt('Nota lavoro giornaliero','')||''; try{ await v22Fetch('/api/v22/team/daily-report',{method:'POST',body:JSON.stringify({done_count:Number(done),pending_count:Number(pending),issue_count:Number(issues),note})}); showToast('Report giornaliero inviato ad Admin.'); }catch(err){ showToast('Report fallito: '+err.message,'error'); } }
+async function v22RequestNotifications(){ if(!('Notification' in window)) return showToast('Notifiche desktop non supportate.','warning'); const perm=await Notification.requestPermission(); showToast('Permesso notifiche: '+perm); }
+async function v22PollNotifications(){ if(!STATE.session||!v22Token()) return; try{ const data=await v22Fetch('/api/v22/notifications'); const unread=(data.notifications||[]).filter(n=>!n.is_read).slice(0,3); if(Notification.permission==='granted') unread.forEach(n=>new Notification(n.title,{body:n.message||'CAF CAE',tag:n.id})); }catch{} }
+const v22_oldRenderAll = renderAll;
+renderAll = function(){ v22_oldRenderAll(); setTimeout(()=>{ v22EnsureRoleDesign(); v22RefreshRoleTables(); }, 50); };
+const v22_oldOpenDetail = openDetail;
+openDetail = function(id){ v22_oldOpenDetail(id); setTimeout(()=>v22EnhanceDetail(id), 80); };
+const v22_oldSetRoleDashboard = setRoleDashboard;
+setRoleDashboard = function(){ v22_oldSetRoleDashboard(); setTimeout(()=>{ v22EnsureRoleDesign(); v22RefreshRoleTables(); }, 100); };
+document.addEventListener('click', e=>{
+  const auth=e.target.closest('[data-v22-authorize]'); if(auth){ v22AuthorizePractice(auth.dataset.v22Authorize); }
+  const up=e.target.closest('[data-v22-upload-practice]'); if(up){ v22UploadFiles(up.dataset.v22UploadPractice || (STATE.pratiche[0]&&STATE.pratiche[0].id)); }
+  const rec=e.target.closest('[data-v22-upload-receipt]'); if(rec){ v22UploadFiles(rec.dataset.v22UploadReceipt || (STATE.pratiche[0]&&STATE.pratiche[0].id), {receipt:true, category:'ricevuta'}); }
+  const ret=e.target.closest('[data-v22-return-bangla]'); if(ret){ v22ReturnBangla(ret.dataset.v22ReturnBangla); }
+  if(e.target.closest('[data-v22-daily-report]')) v22SendDailyReport();
+  if(e.target.closest('[data-v22-request-notifications]')) v22RequestNotifications();
+  if(e.target.closest('[data-v22-new-practice]')) { if(STATE.session?.role==='agent') switchAgentTab?.('agent-new'); else if(STATE.session?.role==='bangla') switchSimple?.('bangla','bangla-new'); else if(STATE.session?.role==='admin') switchSimple?.('admin','admin-create'); }
+});
+window.CAF_CAE_V22_SYNC = async function(){ await v21LoadPracticesFromBackend({render:true,silent:false}); v22EnsureRoleDesign(); v22RefreshRoleTables(); return true; };
+window.CAF_CAE_V22_NOTIFY = v22RequestNotifications;
+setInterval(v22PollNotifications, 60000);
+
   async function boot() {
     seed();
     ensureState();
