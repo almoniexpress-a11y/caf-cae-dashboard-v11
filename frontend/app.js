@@ -2845,6 +2845,175 @@ document.addEventListener('input', e=>{
 });
 
 
+
+/* ========================= CAF CAE v25 REAL SAAS UI — NO DEMO, LIVE DATA ONLY ========================= */
+(function(){
+  const $q = (s, root=document) => root.querySelector(s);
+  const $$q = (s, root=document) => Array.from(root.querySelectorAll(s));
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  const euro = (n) => (Number(n||0)).toLocaleString('it-IT',{style:'currency',currency:'EUR'});
+  const fmt = (d) => d ? String(d).slice(0,10) : today();
+  const roles = {admin:'Admin',agent:'Agente',bangla:'Team Bangla',italy:'Team Italy',commercialista:'Commercialista'};
+  const roleLabel = (r) => roles[r] || r || '--';
+  function data(){ return Array.isArray(STATE.pratiche) ? STATE.pratiche : []; }
+  function companies(){ return Array.isArray(STATE.companies) ? STATE.companies : []; }
+  function invoices(){ return Array.isArray(STATE.invoices) ? STATE.invoices : []; }
+  function users(){ return Array.isArray(STATE.users) ? STATE.users : []; }
+  function memberships(){ return [...data().filter(p=>/member/i.test(`${p.serviceTitle||''} ${p.serviceKey||''} ${p.group||''}`)), ...(STATE.memberships||[])]; }
+  function clientName(p){ const c=p?.client||{}; return [c.firstName,c.lastName].filter(Boolean).join(' ') || [p?.firstName,p?.lastName].filter(Boolean).join(' ') || p?.clientName || p?.name || '--'; }
+  function serviceName(p){ return p?.serviceTitle || p?.service || p?.serviceKey || '--'; }
+  function owner(p){ return p?.currentOwner || p?.assignedTeam || p?.routeTeam || 'bangla'; }
+  function pct(p){ return Math.max(0,Math.min(100,Number(p?.progress || (/complet/i.test(p?.status||'')?100:/verif|revision|lavor/i.test(p?.status||'')?55:20)))); }
+  function rowVisibleFor(role){
+    const email=STATE.session?.email||'';
+    if(role==='admin') return data();
+    if(role==='agent') return data().filter(p=>p.agentEmail===email || p.agent_email===email || p.createdByEmail===email);
+    if(role==='bangla') return data().filter(p=> owner(p)==='bangla' || (p.watchers||[]).includes('bangla') || /bangla/i.test(JSON.stringify(p.teamHistory||[])) || p.source==='agent');
+    if(role==='italy') return data().filter(p=> owner(p)==='italy' || (p.watchers||[]).includes('italy'));
+    if(role==='commercialista') return data().filter(p=> owner(p)==='commercialista' || /commercialista/i.test(`${p.group||''} ${p.serviceTitle||''} ${p.serviceKey||''}`));
+    return [];
+  }
+  function stats(role){
+    const all=data(), rows=rowVisibleFor(role), mem=memberships();
+    return {
+      total: all.length,
+      rows: rows.length,
+      users: users().length,
+      agents: users().filter(u=>u.role==='agent').length,
+      bangla: all.filter(p=>owner(p)==='bangla').length,
+      italy: all.filter(p=>owner(p)==='italy').length,
+      comm: all.filter(p=>owner(p)==='commercialista').length,
+      done: rows.filter(p=>/complet/i.test(p.status||'')).length,
+      missing: rows.filter(p=>(p.missingDocs||[]).length || /manc|integraz/i.test(`${p.status||''} ${p.documentStatus||''}`)).length,
+      membership: mem.length,
+      clients: collectClients(role).length,
+      revenue: [...all,...invoices()].reduce((s,x)=>s+Number(x.amount||x.total||x.cost||0),0),
+      creditReq: (STATE.creditRequests||[]).filter(r=>!/approv|paid|closed/i.test(r.status||'')).length
+    };
+  }
+  function collectClients(role){
+    const email=STATE.session?.email||''; const map=new Map();
+    const add=(c={}, extra={})=>{ const key=(c.cf||c.email||c.phone||c.name||JSON.stringify(c)).toString().toLowerCase(); if(!key||key==='{}') return; if(role==='agent' && extra.agentEmail && extra.agentEmail!==email) return; map.set(key,{...c,...extra}); };
+    data().forEach(p=>add(p.client||{}, {lastPractice:p.code, agentEmail:p.agentEmail, team:owner(p)}));
+    (STATE.agentClients||[]).forEach(c=>add(c,c));
+    companies().forEach(c=>add({name:c.name||c.companyName||c.clientName, email:c.email, phone:c.phone, cf:c.vat||c.cf}, {company:true}));
+    return [...map.values()];
+  }
+  function rootForRole(){
+    const role=STATE.session?.role;
+    const sec=$q(`#dashboard-${role}`);
+    if(!sec || sec.classList.contains('hidden')) return null;
+    return sec.querySelector('main') || sec;
+  }
+  function setPage(page){ window.CAF_CAE_V25_PAGE=page; render(); }
+  function hero(title, sub, actions='', quote='Persone · Pratiche · Risultati'){
+    return `<section class="v25-hero"><div><span>CAF CAE Pro v25</span><h1>${esc(title)}</h1><p>${esc(sub)}</p></div><strong>${esc(quote)}</strong><div class="v25-hero-actions">${actions}</div></section>`;
+  }
+  function btn(label, cls='', attrs=''){ return `<button class="v25-btn ${cls}" ${attrs}>${label}</button>`; }
+  function kpis(items){ return `<section class="v25-kpis">${items.map((x,i)=>`<article><i class="fa-solid ${x.icon||'fa-chart-line'}"></i><small>${esc(x.label)}</small><b>${esc(x.value)}</b><em>${esc(x.note||'live')}</em></article>`).join('')}</section>`; }
+  function badge(t,tone='blue'){ return `<span class="v25-badge ${tone}">${esc(t||'--')}</span>`; }
+  function progress(p){ return `<div class="v25-progress"><span style="width:${pct(p)}%"></span></div><small>${pct(p)}%</small>`; }
+  function table(title, sub, rows, role){
+    return `<section class="v25-card"><div class="v25-head"><div><h3>${esc(title)}</h3><p>${esc(sub||'')}</p></div><div><input class="v25-search" placeholder="Cerca..." data-v25-search></div></div><div class="v25-table-wrap"><table class="v25-table"><thead><tr><th>Codice</th><th>Cliente</th><th>Servizio</th><th>Owner</th><th>Stato</th><th>Docs</th><th>%</th><th>Azioni</th></tr></thead><tbody>${rows.map(p=>`<tr data-v25-filter="${esc(JSON.stringify(p).toLowerCase())}"><td><b>${esc(p.code||'--')}</b></td><td>${esc(clientName(p))}</td><td>${esc(serviceName(p))}</td><td>${badge(roleLabel(owner(p)),'team')}</td><td>${badge(p.status||'Nuova',/manc|integ/i.test(`${p.status||''} ${p.documentStatus||''}`)?'warn':/complet/i.test(p.status||'')?'ok':'blue')}</td><td>${esc(p.documentStatus || ((p.missingDocs||[]).length ? 'Mancanti' : 'Ricevuti'))}</td><td>${progress(p)}</td><td><button class="v25-link" data-v25-detail="${esc(p.id||p.code)}">Apri</button>${role==='bangla'?`<button class="v25-link green" data-v22-authorize="${esc(p.id)}">Invia Italy</button>`:''}${role==='italy'?`<button class="v25-link orange" data-v22-upload-receipt="${esc(p.id)}">Ricevuta</button>`:''}</td></tr>`).join('') || `<tr><td colspan="8" class="v25-empty">Nessun dato reale trovato.</td></tr>`}</tbody></table></div></section>`;
+  }
+  function activity(rows=data().slice(0,6)){
+    return `<section class="v25-card"><div class="v25-head"><div><h3>Attività recenti</h3><p>Movimenti reali dal sistema</p></div></div><div class="v25-activity">${rows.map((p,i)=>`<div><i></i><b>${esc(p.code||'Pratica')}</b><span>${esc(p.teamMessage||p.status||'Aggiornamento')}</span><small>${esc(fmt(p.updatedAt||p.createdAt))}</small></div>`).join('') || '<p class="v25-empty">Nessuna attività.</p>'}</div></section>`;
+  }
+  function membershipPanel(){
+    const rows=memberships(); const active=rows.filter(x=>/attiv|approv|idone/i.test(`${x.status||''} ${x.result||''}`)).length; const review=rows.filter(x=>/revision|attes/i.test(`${x.status||''} ${x.result||''}`)).length; const bad=rows.filter(x=>/scad|resp|non/i.test(`${x.status||''} ${x.result||''}`)).length;
+    return `<section class="v25-card"><div class="v25-head"><div><h3>Membership</h3><p>Risultati reali, rinnovi e stato membri</p></div><button class="v25-mini" data-v25-page="membership">Dettagli</button></div><div class="v25-membership"><div class="v25-donut"><b>${rows.length}</b><span>Totale</span></div><ul><li><i class="ok"></i> Attive <b>${active}</b></li><li><i class="blue"></i> In revisione <b>${review}</b></li><li><i class="warn"></i> Da rinnovare <b>${Math.max(0,rows.length-active-review-bad)}</b></li><li><i class="bad"></i> Non idonee/scadute <b>${bad}</b></li></ul></div></section>`;
+  }
+  function quick(role){
+    const base = role==='admin' ? [['Nuova pratica','orange','data-v25-page="create"'],['Nuovo agente','blue','data-v25-page="admin-users"'],['Credito agenti','green','data-v25-page="credit"'],['Membership','purple','data-v25-page="membership"']]
+      : role==='agent' ? [['Nuova pratica','orange','data-v25-page="create"'],['Nuovo cliente','blue','data-v25-page="clients"'],['Richiedi credito','green','data-v25-page="credit"'],['Ticket','light','data-v25-page="tickets"']]
+      : role==='bangla' ? [['Nuova pratica','orange','data-v25-page="create"'],['Nuovo cliente','blue','data-v25-page="clients"'],['Report giornaliero','green','data-v22-daily-report'],['Ticket Admin','light','data-v25-page="tickets"']]
+      : role==='italy' ? [['Carica ricevuta','orange','data-v22-upload-receipt'],['Nuova integrazione','blue','data-v25-page="tickets"'],['Ritorna Bangla','light','data-v22-return-bangla'],['Documenti','green','data-v25-page="documents"']]
+      : [['Nuova ditta','orange','data-v25-page="create"'],['Carica documenti','blue','data-v25-page="documents"'],['Fattura/F24','green','data-v25-page="companies"'],['Ticket','light','data-v25-page="tickets"']];
+    return `<section class="v25-card"><div class="v25-head"><div><h3>Azioni rapide</h3><p>Opzioni operative</p></div></div><div class="v25-actions">${base.map(a=>`<button class="${a[1]}" ${a[2]}><i class="fa-solid fa-plus"></i>${a[0]}</button>`).join('')}</div></section>`;
+  }
+  function dashboard(role){
+    const st=stats(role), rows=rowVisibleFor(role);
+    const titles={admin:'Centro operativo totale',agent:'Area Agente',bangla:'Team Bangla Control Center',italy:'Team Italy',commercialista:'Area Commercialista'};
+    const subs={admin:'Tutto il sistema in tempo reale: pratiche, team, agenti, credito, membership e documenti.',agent:'Crea pratiche, salva clienti, monitora credito, profitto e membership.',bangla:'Ricevi dagli agenti, controlla documenti, comunica col cliente e autorizza per Team Italy.',italy:'Lavora solo pratiche autorizzate da Team Bangla: verifica, ricevute, integrazioni e completamento.',commercialista:'Gestisci ditte, contabilità, documenti, F24, buste paga, piani e comunicazioni.'};
+    const head=hero(titles[role]||'Dashboard',subs[role]||'',`${btn('Nuova pratica','orange','data-v25-page="create"')} ${role==='admin'?btn('Credito agenti','green','data-v25-page="credit"'):''} ${btn('Documenti','blue','data-v25-page="documents"')}`);
+    const kp= role==='admin' ? kpis([{label:'Pratiche totali',value:st.total,icon:'fa-file-lines'},{label:'Agenti attivi',value:st.agents,icon:'fa-users'},{label:'Clienti salvati',value:st.clients,icon:'fa-address-book'},{label:'Team Bangla',value:st.bangla,icon:'fa-flag'},{label:'Team Italy',value:st.italy,icon:'fa-paper-plane'},{label:'Richieste credito',value:st.creditReq,icon:'fa-wallet'}])
+      : role==='agent' ? kpis([{label:'Mie pratiche',value:st.rows,icon:'fa-file-lines'},{label:'Complete',value:st.done,icon:'fa-circle-check'},{label:'Credito',value:euro(typeof agentCredit==='function'?agentCredit():0),icon:'fa-wallet'},{label:'Profitto stimato',value:euro(rowVisibleFor('agent').reduce((s,p)=>s+Math.max(0,Number(p.paidAmount||p.amount||p.cost||0)-Number(p.cafCost||p.serviceCost||0)),0)),icon:'fa-sack-dollar'},{label:'Clienti',value:st.clients,icon:'fa-address-book'}])
+      : role==='bangla' ? kpis([{label:'Nuove da agenti',value:st.rows,icon:'fa-inbox'},{label:'Da verificare',value:rows.filter(p=>!/complet/i.test(p.status||'')).length,icon:'fa-magnifying-glass'},{label:'Docs mancanti',value:st.missing,icon:'fa-triangle-exclamation'},{label:'Pronte Italy',value:rows.filter(p=>!(p.missingDocs||[]).length).length,icon:'fa-paper-plane'},{label:'Clienti',value:st.clients,icon:'fa-users'},{label:'Membership',value:st.membership,icon:'fa-crown'}])
+      : role==='italy' ? kpis([{label:'Assegnate',value:st.rows,icon:'fa-folder-open'},{label:'In revisione',value:rows.filter(p=>!/complet/i.test(p.status||'')).length,icon:'fa-clock'},{label:'Da completare',value:rows.filter(p=>pct(p)<100).length,icon:'fa-clipboard-check'},{label:'Ricevute upload',value:rows.filter(p=>p.receiptLink).length,icon:'fa-upload'},{label:'Complete',value:st.done,icon:'fa-circle-check'}])
+      : kpis([{label:'Ditte/clienti',value:companies().length,icon:'fa-building'},{label:'Pratiche fiscali',value:st.rows,icon:'fa-folder'},{label:'Fatture',value:invoices().length,icon:'fa-file-invoice'},{label:'Documenti',value:(STATE.commDocuments||[]).length,icon:'fa-folder-open'},{label:'Incassi',value:euro(invoices().reduce((s,i)=>s+Number(i.total||i.amount||0),0)),icon:'fa-coins'}]);
+    const flow = role==='bangla' ? `<section class="v25-flow"><article><b>1</b><span>Agent crea</span></article><i></i><article class="active"><b>2</b><span>Bangla controlla</span></article><i></i><article><b>3</b><span>Italy lavora</span></article><i></i><article><b>4</b><span>Completata</span></article></section>` : '';
+    return head+kp+flow+`<div class="v25-grid"><main>${table(role==='italy'?'Pratiche assegnate a Team Italy':role==='bangla'?'Inbox pratiche Team Bangla':role==='agent'?'Le mie pratiche':role==='commercialista'?'Pratiche/ditte commercialista':'Pratiche recenti','Dati reali dal backend/Supabase, nessun demo',rows,role)}${clientsPanel(role)}</main><aside>${quick(role)}${membershipPanel()}${activity(rows)}</aside></div>`;
+  }
+  function clientsPanel(role){
+    const rows=collectClients(role);
+    return `<section class="v25-card"><div class="v25-head"><div><h3>Clienti salvati</h3><p>Search + auto-fill server: nome, CF, telefono, email, pratiche precedenti</p></div><button class="v25-mini" data-v25-page="clients">Apri clienti</button></div><div class="v25-client-list">${rows.slice(0,5).map(c=>`<div><b>${esc(c.name || [c.firstName,c.lastName].filter(Boolean).join(' ') || '--')}</b><span>${esc(c.cf||'CF --')} · ${esc(c.phone||'Tel --')} · ${esc(c.email||'Email --')}</span></div>`).join('')||'<p class="v25-empty">Nessun cliente salvato.</p>'}</div></section>`;
+  }
+  function createPage(role){
+    return hero('Nuova pratica / cliente','Creazione pratica backend: Team Bangla riceve prima, Admin vede sempre, Italy solo dopo autorizzazione.',`${btn('Torna dashboard','light','data-v25-page="dashboard"')}`)+`<section class="v25-card"><div class="v25-head"><div><h3>Crea pratica</h3><p>Salva cliente sul server e crea ordine operativo.</p></div></div><form class="v25-form" id="v25CreateForm"><label>Servizio<select name="service"><option>Modello 730</option><option>ISEE Ordinario</option><option>NASpI</option><option>Permesso di Soggiorno</option><option>Membership</option><option>Commercialista</option></select></label><label>Nome<input name="firstName" required></label><label>Cognome<input name="lastName" required></label><label>Codice fiscale<input name="cf"></label><label>Email<input name="email" type="email"></label><label>Telefono<input name="phone"></label><label>Prezzo cliente<input name="amount" type="number" step="0.01" value="0"></label><label>Costo CAF CAE<input name="cafCost" type="number" step="0.01" value="0"></label><label>Team iniziale<select name="team"><option value="bangla">Team Bangla</option>${role==='admin'?'<option value="italy">Team Italy</option><option value="commercialista">Commercialista</option>':''}</select></label><label class="wide">Note<textarea name="note"></textarea></label><button class="v25-btn orange wide">Crea pratica backend</button></form></section>`;
+  }
+  function documentsPage(role){
+    const rows=rowVisibleFor(role);
+    return hero('Documenti e allegati','Upload, preview, download, ricevute e integrazioni collegati alla pratica.',`${btn('Torna dashboard','light','data-v25-page="dashboard"')}`)+table('Seleziona pratica per caricare documenti','Usa Apri oppure Carica per allegati backend',rows,role);
+  }
+  function clientsPage(role){
+    const rows=collectClients(role);
+    return hero('Clienti','Archivio clienti condiviso con permessi per ruolo e auto-fill futuro.',`${btn('Nuovo cliente','orange','data-v25-page="create"')} ${btn('Torna dashboard','light','data-v25-page="dashboard"')}`)+`<section class="v25-card"><div class="v25-head"><div><h3>Database clienti</h3><p>Solo clienti reali salvati da pratiche, agenti, team o commercialista.</p></div><input class="v25-search" placeholder="Cerca cliente..."></div><div class="v25-client-grid">${rows.map(c=>`<article><b>${esc(c.name || [c.firstName,c.lastName].filter(Boolean).join(' ') || '--')}</b><p>${esc(c.cf||'CF --')}</p><p>${esc(c.phone||'Tel --')}</p><p>${esc(c.email||'Email --')}</p><span>${esc(c.lastPractice||'')}</span></article>`).join('')||'<p class="v25-empty">Nessun cliente trovato.</p>'}</div></section>`;
+  }
+  function creditPage(){
+    const rows=STATE.creditRequests||[];
+    return hero('Credito agenti','Richieste credito, verifica pagamento, approvazione e storico.',`${btn('Torna dashboard','light','data-v25-page="dashboard"')}`)+`<section class="v25-card"><div class="v25-head"><div><h3>Richieste credito</h3><p>Admin vede telefono agente e importo da verificare.</p></div></div><div class="v25-credit-list">${rows.map(r=>`<div><b>${esc(r.agentName||r.agentEmail||r.email||'Agente')}</b><span>${esc(r.phone||'Telefono --')} · ${euro(r.amount||0)} · ${esc(r.status||'In attesa')}</span><button class="v25-link green" data-credit-approve="${esc(r.id)}">Approva</button></div>`).join('')||'<p class="v25-empty">Nessuna richiesta credito.</p>'}</div></section>`;
+  }
+  function membershipPage(role){
+    const rows=memberships();
+    return hero('Membership Center','Esiti, rinnovi, team assegnati, scadenze e risultati membership.',`${btn('Torna dashboard','light','data-v25-page="dashboard"')}`)+membershipPanel()+`<section class="v25-card"><div class="v25-head"><div><h3>Risultati membership</h3><p>Dati reali salvati nel sistema.</p></div></div><div class="v25-table-wrap"><table class="v25-table"><thead><tr><th>Membro</th><th>Tipo</th><th>Stato</th><th>Risultato</th><th>Team</th><th>Scadenza</th></tr></thead><tbody>${rows.map(m=>`<tr><td>${esc(clientName(m)||m.name||m.clientName||'--')}</td><td>${esc(m.type||m.membershipType||m.serviceTitle||'Membership')}</td><td>${badge(m.status||'--')}</td><td>${esc(m.result||'--')}</td><td>${esc(roleLabel(owner(m)))}</td><td>${esc(fmt(m.deadline||m.expiresAt||m.updatedAt))}</td></tr>`).join('')||'<tr><td colspan="6" class="v25-empty">Nessuna membership reale.</td></tr>'}</tbody></table></div></section>`;
+  }
+  function detailPage(id){
+    const p=data().find(x=>String(x.id)===String(id)||String(x.code)===String(id)); if(!p) return dashboard(STATE.session?.role||'admin');
+    const hist=[...(p.workflowEvents||[]),...(p.teamHistory||[])].slice(0,10);
+    return hero(p.code||'Pratica',`${clientName(p)} · ${serviceName(p)} · ${roleLabel(owner(p))}`,`${btn('Torna','light','data-v25-page="dashboard"')} ${btn('Carica allegati','orange',`data-v22-upload-practice="${esc(p.id)}"`)} ${btn('Carica ricevuta','blue',`data-v22-upload-receipt="${esc(p.id)}"`)} ${owner(p)==='bangla'?btn('Autorizza Italy','green',`data-v22-authorize="${esc(p.id)}"`):''}`)+`<section class="v25-detail"><div class="v25-card"><h3>Info cliente</h3><p><b>${esc(clientName(p))}</b></p><p>${esc(p.client?.cf||'CF --')}</p><p>${esc(p.client?.phone||p.phone||'Tel --')}</p><p>${esc(p.client?.email||p.email||'Email --')}</p></div><div class="v25-card"><h3>Pratica</h3><p>Servizio: <b>${esc(serviceName(p))}</b></p><p>Stato: ${badge(p.status||'Nuova')}</p><p>Documenti: ${esc(p.documentStatus||'--')}</p>${progress(p)}</div><div class="v25-card"><h3>Azioni</h3><div class="v25-actions"><button class="orange" data-v22-upload-practice="${esc(p.id)}">Carica documenti</button><button class="blue" data-v22-upload-receipt="${esc(p.id)}">Carica ricevuta</button><button class="light" data-v25-page="tickets">Ticket/nota</button></div></div></section><section class="v25-card"><div class="v25-head"><div><h3>Timeline</h3><p>Storico lavoro pratica</p></div></div><div class="v25-activity">${hist.map(h=>`<div><i></i><b>${esc(h.action||h.message||'Update')}</b><span>${esc(h.by||h.actor_name||'Sistema')}</span><small>${esc(fmt(h.date||h.created_at))}</small></div>`).join('')||'<p class="v25-empty">Nessuna timeline.</p>'}</div></section>`;
+  }
+  function ticketsPage(){ return hero('Ticket e comunicazioni','Problemi operativi, richieste admin, note team e comunicazioni clienti.',`${btn('Torna dashboard','light','data-v25-page="dashboard"')}`)+`<section class="v25-card"><div class="v25-head"><div><h3>Nuovo ticket</h3><p>Invia problema o richiesta ad Admin/team.</p></div></div><form class="v25-form"><label>Oggetto<input placeholder="Titolo ticket"></label><label>Pratica<input placeholder="Codice pratica"></label><label class="wide">Messaggio<textarea placeholder="Descrivi problema..."></textarea></label><button class="v25-btn orange wide" type="button">Invia ticket</button></form></section>`; }
+  function render(){
+    if(!STATE.session) return; const role=STATE.session.role; const root=rootForRole(); if(!root) return;
+    document.body.classList.add('v25-ui');
+    let app=$q('#v25App', root); if(!app){ app=document.createElement('div'); app.id='v25App'; root.prepend(app); }
+    const page=window.CAF_CAE_V25_PAGE||'dashboard';
+    let html='';
+    if(page==='dashboard') html=dashboard(role);
+    else if(page==='create' || page==='admin-users') html=createPage(role);
+    else if(page==='documents') html=documentsPage(role);
+    else if(page==='clients' || page==='companies') html=clientsPage(role);
+    else if(page==='credit') html=creditPage();
+    else if(page==='membership') html=membershipPage(role);
+    else if(page==='tickets') html=ticketsPage();
+    else if(page.startsWith('detail:')) html=detailPage(page.split(':').slice(1).join(':'));
+    else html=dashboard(role);
+    app.innerHTML = html;
+  }
+  async function createPracticeFromForm(form){
+    const fd=new FormData(form); const service=fd.get('service'); const team=fd.get('team')||'bangla';
+    const p=v20NormalizePractice ? v20NormalizePractice({
+      id:'p-'+Date.now(), code:`CAF-${String(service).replace(/[^A-Z0-9]/gi,'').toUpperCase().slice(0,8)||'PRATICA'}-${new Date().getFullYear()}-${String((data().length||0)+1).padStart(4,'0')}`,
+      source:STATE.session?.role==='agent'?'agent':'manual', group:/isee|730|naspi/i.test(service)?'CAF':'CAF', serviceTitle:service,
+      client:{firstName:fd.get('firstName'),lastName:fd.get('lastName'),cf:fd.get('cf'),email:fd.get('email'),phone:fd.get('phone')},
+      agentEmail:STATE.session?.role==='agent'?STATE.session.email:'', agentName:STATE.session?.role==='agent'?STATE.session.name:'', currentOwner: team, assignedTeam:team, routeTeam:team,
+      status:'Nuova', documentStatus:'Documenti mancanti', progress:15, paymentStatus:'Da verificare', cost:Number(fd.get('amount')||0), cafCost:Number(fd.get('cafCost')||0), createdAt:today(), updatedAt:today(), watchers:['admin','bangla',team].filter((x,i,a)=>a.indexOf(x)===i), teamHistory:[{date:today(),by:STATE.session?.name||'Sistema',role:STATE.session?.role,action:'Pratica creata da v25 UI'}]
+    }) : {};
+    STATE.pratiche ||= []; STATE.pratiche.unshift(p); if(typeof saveState==='function') saveState(); if(typeof v21PushPracticesToBackend==='function') await v21PushPracticesToBackend('v25-create'); await (typeof v21LoadPracticesFromBackend==='function' ? v21LoadPracticesFromBackend({render:false,silent:true}) : Promise.resolve()); window.CAF_CAE_V25_PAGE='dashboard'; render(); showToast('Pratica creata e salvata nel backend.');
+  }
+  const oldRenderAll=renderAll; renderAll=function(){ oldRenderAll(); setTimeout(render,80); };
+  const oldSetRole=setRoleDashboard; setRoleDashboard=function(){ oldSetRole(); window.CAF_CAE_V25_PAGE='dashboard'; setTimeout(render,100); };
+  document.addEventListener('click', e=>{
+    const page=e.target.closest('[data-v25-page]'); if(page){ e.preventDefault(); setPage(page.dataset.v25Page); return; }
+    const det=e.target.closest('[data-v25-detail]'); if(det){ e.preventDefault(); window.CAF_CAE_V25_PAGE='detail:'+det.dataset.v25Detail; render(); return; }
+    if(e.target.closest('[data-admin-tab],[data-agent-tab],[data-bangla-tab],[data-italy-tab],[data-comm-tab]')) setTimeout(()=>{ if(!window.CAF_CAE_V25_PAGE) window.CAF_CAE_V25_PAGE='dashboard'; render(); },120);
+  });
+  document.addEventListener('submit', e=>{ if(e.target && e.target.id==='v25CreateForm'){ e.preventDefault(); createPracticeFromForm(e.target); } });
+  document.addEventListener('input', e=>{ if(e.target.matches('[data-v25-search]')){ const q=e.target.value.toLowerCase(); $$q('[data-v25-filter]').forEach(r=>r.style.display=r.dataset.v25Filter.includes(q)?'':'none'); } });
+  window.CAF_CAE_V25_RENDER=render;
+  window.CAF_CAE_V25_SYNC=async function(){ if(typeof v21LoadPracticesFromBackend==='function') await v21LoadPracticesFromBackend({render:false,silent:false}); render(); return true; };
+  setInterval(()=>{ if(STATE.session && document.visibilityState==='visible') render(); }, 5000);
+})();
   async function boot() {
     seed();
     ensureState();
