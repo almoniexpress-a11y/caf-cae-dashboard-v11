@@ -2704,6 +2704,147 @@ document.addEventListener('click', e=>{
 });
 window.CAF_CAE_REVISU_DESIGN = v23Render;
 
+
+/* ========================= CAF CAE v22 LIVE READY UI — NO DEMO NUMBERS ========================= */
+function v24Euro(value){
+  const n = Number(value || 0);
+  return new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(n);
+}
+function v24Rows(){ return Array.isArray(STATE.pratiche) ? STATE.pratiche : []; }
+function v24Users(role){ return (STATE.users||[]).filter(u=>!role || u.role===role); }
+function v24Companies(){ return Array.isArray(STATE.companies) ? STATE.companies : []; }
+function v24Invoices(){ return Array.isArray(STATE.invoices) ? STATE.invoices : []; }
+function v24ClientPool(){
+  const map = new Map();
+  (STATE.agentClients||[]).forEach(c=>{ const key=(c.cf||c.email||c.phone||`${c.firstName||''}-${c.lastName||''}`).toLowerCase(); if(key) map.set(key,c); });
+  v24Rows().forEach(p=>{ const c=p.client||{}; const key=(c.cf||c.email||c.phone||p.email||p.phone||p.clientName||p.client||'').toString().toLowerCase(); if(key) map.set(key,{...c, name: v23ClientName ? v23ClientName(p) : (p.clientName||p.client)}); });
+  v24Companies().forEach(c=>{ const key=(c.vat||c.cf||c.email||c.name||'').toString().toLowerCase(); if(key) map.set(key,c); });
+  return Array.from(map.values());
+}
+function v24Owner(p){ return p.currentOwner || p.assignedTeam || p.routeTeam || 'bangla'; }
+function v24IsMembership(p){ return /membership|mamma|beb|member|tessera/i.test(JSON.stringify(p||{})); }
+function v24MembershipRows(){ return (STATE.memberships||STATE.membershipResults||[]).concat(v24Rows().filter(v24IsMembership)); }
+function v24PaidAmount(p){ return Number(p.paidAmount||p.clientPaid||p.amountPaid||p.serviceData?.clientPaid||p.cost||0); }
+function v24CostAmount(p){ return Number(p.cafCost||p.serviceData?.cafCost||p.serviceData?.cost||0); }
+function v24Revenue(){ return v24Rows().reduce((s,p)=>s+v24PaidAmount(p),0) + v24Invoices().reduce((s,i)=>s+Number(i.total||i.amount||0),0); }
+function v24AgentProfitRows(){ return v24Rows().filter(p=>p.agentEmail===STATE.session?.email || p.agentId===STATE.session?.id); }
+function v24AgentProfit(){ return v24AgentProfitRows().reduce((s,p)=>s+Math.max(0, v24PaidAmount(p)-v24CostAmount(p)),0); }
+function v24CreditRequests(){ return Array.isArray(STATE.creditRequests) ? STATE.creditRequests : []; }
+function v24DocsMissingCount(rows=v24Rows()){
+  return rows.filter(p => (p.missingDocs||[]).length || /manc|integrazione|integraz/i.test(`${p.documentStatus||''} ${p.status||''}`)).length;
+}
+function v24DoneCount(rows=v24Rows()){ return rows.filter(p=>/complet|chius|done/i.test(p.status||'')).length; }
+function v24Recent(rows=v24Rows(), count=8){ return [...rows].sort((a,b)=>String(b.updatedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.createdAt||''))).slice(0,count); }
+function v24RoleRows(role){
+  if(role==='admin') return v24Rows();
+  if(role==='agent') return (typeof agentPratiche==='function') ? agentPratiche() : v24Rows().filter(p=>p.agentEmail===STATE.session?.email);
+  if(role==='bangla') return (typeof banglaPratiche==='function') ? banglaPratiche() : v24Rows().filter(p=>v24Owner(p)==='bangla');
+  if(role==='italy') return (typeof italyPratiche==='function') ? italyPratiche() : v24Rows().filter(p=>v24Owner(p)==='italy');
+  if(role==='commercialista') return (typeof commercialistaPratiche==='function') ? commercialistaPratiche() : v24Rows().filter(p=>v24Owner(p)==='commercialista');
+  return [];
+}
+function v24StatusTone(p){ return /complet|chius|done/i.test(p.status||'')?'ok':/manc|integraz/i.test(`${p.status||''} ${p.documentStatus||''}`)?'warn':'blue'; }
+function v24KpiSpark(){ return '<span class="v24-spark"><i></i><i></i><i></i><i></i><i></i></span>'; }
+function v24Kpis(items){
+  return `<section class="v23-kpis v24-kpis">${items.map((x,i)=>`<article class="v23-kpi"><div class="v23-kpi-icon i${i%6}"><i class="fa-solid ${x.icon||'fa-chart-line'}"></i></div><small>${safe(x.label)}</small><b>${safe(x.value)}</b><em>${safe(x.delta||'backend live')}</em>${v24KpiSpark()}</article>`).join('')}</section>`;
+}
+function v24Table(title, subtitle, rows, options={}){
+  const body = rows.slice(0, options.limit||9).map(p=>{
+    const docsText = p.fileCount ? `${p.fileCount} allegati` : (p.documentStatus || ((p.checkedDocs||[]).length ? `${(p.checkedDocs||[]).length} doc` : '--'));
+    const pct = (typeof v23Pct==='function') ? v23Pct(p) : Number(p.progress||0);
+    const staff = p.serviceData?.assigned_staff_name || p.assignedStaffName || p.assignedStaff || '--';
+    const owner = v22RoleLabel ? v22RoleLabel(v24Owner(p)) : v24Owner(p);
+    const actions = [`<button class="v23-link" data-detail="${safe(p.id)}">Apri</button>`];
+    if(options.role==='bangla') actions.push(`<button class="v23-link green" data-v22-authorize="${safe(p.id)}">Autorizza</button>`, `<button class="v23-link orange" data-bangla-missing="${safe(p.id)}">Mancanti</button>`, `<button class="v23-link" data-v22-upload-practice="${safe(p.id)}">Upload</button>`);
+    if(options.role==='italy') actions.push(`<button class="v23-link orange" data-v22-upload-receipt="${safe(p.id)}">Ricevuta</button>`, `<button class="v23-link" data-v22-return-bangla="${safe(p.id)}">Ritorna</button>`);
+    return `<tr><td><b>${safe(p.code||p.id)}</b></td><td>${safe(v23ClientName ? v23ClientName(p) : (p.clientName||p.client||'--'))}</td><td>${safe(v23Svc ? v23Svc(p) : (p.serviceTitle||p.service||'--'))}</td><td>${v23Badge ? v23Badge(owner,'team') : safe(owner)}</td><td>${v23Badge ? v23Badge(p.status||'Nuova',v24StatusTone(p)) : safe(p.status||'Nuova')}</td><td>${safe(docsText)}</td><td><div class="v23-mini"><span style="width:${pct}%"></span></div><small>${pct}%</small></td><td>${actions.join(' ')}</td></tr>`;
+  }).join('') || `<tr><td colspan="8" class="v23-empty">Nessun dato backend per questa sezione. Crea o sincronizza una pratica.</td></tr>`;
+  return `<section class="v23-card v23-table-card"><div class="v23-card-head"><div><h3>${safe(title)}</h3><p>${safe(subtitle||'')}</p></div>${options.head||''}</div><div class="v23-table-wrap"><table class="v23-table"><thead><tr><th>Codice</th><th>Cliente</th><th>Servizio</th><th>Team</th><th>Stato</th><th>Docs</th><th>Avanzamento</th><th>Azioni</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
+}
+function v24MembershipPanel(){
+  const rows=v24MembershipRows();
+  const active=rows.filter(x=>/attiv|approv|idone/i.test(`${x.status||''} ${x.result||''}`)).length;
+  const review=rows.filter(x=>/revision|verif|attesa/i.test(`${x.status||''} ${x.result||''}`)).length;
+  const renew=rows.filter(x=>/rinnov|scad/i.test(`${x.status||''} ${x.result||''}`)).length;
+  const bad=rows.filter(x=>/non|respint|manc/i.test(`${x.status||''} ${x.result||''}`)).length;
+  const pct=rows.length?Math.round(active/rows.length*100):0;
+  return `<section class="v23-card"><div class="v23-card-head"><div><h3>Risultati Membership</h3><p>Dati reali da backend, pratiche e membership</p></div><button class="v23-light" data-v22-membership>Dettagli</button></div><div class="v23-donut-row"><div class="v23-donut" style="background:conic-gradient(#10b981 0 ${pct}%,#3b82f6 ${pct}% ${Math.min(100,pct+review)}%,#f59e0b ${Math.min(100,pct+review)}% ${Math.min(100,pct+review+renew)}%,#ef4444 ${Math.min(100,pct+review+renew)}% 100%)"><b>${pct}%</b><span>${rows.length} totali</span></div><ul><li><i class="ok"></i> Attive <b>${active}</b></li><li><i class="blue"></i> In revisione <b>${review}</b></li><li><i class="warn"></i> Da rinnovare <b>${renew}</b></li><li><i class="bad"></i> Non idonee/mancanti <b>${bad}</b></li></ul></div></section>`;
+}
+function v24Activity(title='Attività recenti'){
+  const rows=v24Recent(v24Rows(),6);
+  return `<section class="v23-card"><div class="v23-card-head"><div><h3>${safe(title)}</h3><p>Ultimi movimenti reali dal sistema</p></div><button class="v23-light">Vedi tutte</button></div><div class="v23-timeline">${rows.map((p,i)=>`<div><i class="dot d${i%4}"></i><b>${safe(p.code||'Pratica')}</b><span>${safe(p.teamMessage||p.status||'Aggiornamento pratica')}</span><small>${safe(p.updatedAt||p.createdAt||today())}</small></div>`).join('') || '<p class="v23-muted">Nessuna attività ancora.</p>'}</div></section>`;
+}
+function v24ClientPanel(){
+  const clients=v24ClientPool().slice(0,6);
+  return `<section class="v23-card"><div class="v23-card-head"><div><h3>Clienti salvati</h3><p>Database condiviso e auto-fill</p></div><button class="v23-light" data-v22-new-client>Nuovo cliente</button></div><div class="v24-client-list">${clients.map(c=>`<div><b>${safe(c.name||[c.firstName,c.lastName].filter(Boolean).join(' ')||c.companyName||'Cliente')}</b><span>${safe(c.cf||c.email||c.phone||'--')}</span></div>`).join('') || '<p class="v23-muted">Nessun cliente salvato.</p>'}</div></section>`;
+}
+function v24QuickActions(role){
+  const base = role==='italy'
+    ? [['Carica documenti','orange','data-v22-upload-practice'],['Carica ricevuta','blue','data-v22-upload-receipt'],['Ritorna a Bangla','light','data-v22-return-bangla'],['Nuova nota','light','data-v22-note']]
+    : role==='bangla'
+    ? [['Nuova pratica','orange','data-v22-new-practice'],['Nuovo cliente','blue','data-v22-new-client'],['Richiedi documenti','light','data-bangla-missing'],['Report giornaliero','green','data-v22-daily-report']]
+    : role==='agent'
+    ? [['Nuova pratica','orange','data-v22-new-practice'],['Nuova membership','blue','data-v22-membership'],['Richiedi credito','green','data-v22-credit-request'],['Apri ticket','light','data-open-ticket']]
+    : role==='commercialista'
+    ? [['Nuova ditta','orange','data-comm-step="comm-step-client"'],['Carica documenti','blue','data-v22-upload-company-doc'],['Emetti fattura','purple','data-v22-invoice'],['Ticket Admin','light','data-open-ticket']]
+    : [['Nuova pratica','orange','data-v22-new-practice'],['Nuovo agente','blue','data-new-user'],['Credito agenti','green','data-v22-credit-admin'],['Assegna team','light','data-v22-team-assign']];
+  return `<section class="v23-card"><div class="v23-card-head"><div><h3>Azioni rapide</h3><p>Tutto collegato al backend</p></div></div><div class="v23-actions-grid">${base.map(([t,c,a])=>`<button class="v23-action ${c}" ${a}><i class="fa-solid fa-plus"></i>${t}</button>`).join('')}</div></section>`;
+}
+function v24AdminDashboard(){
+  const rows=v24Rows(); const s=v22PracticeStats(); const credits=v24CreditRequests();
+  return v23Hero('Centro operativo totale','Pannello live: pratiche, team, agenti, documenti, membership e crediti senza dati demo.', `${v23Btn('<i class="fa-solid fa-plus"></i> Crea pratica','orange','data-v22-new-practice')} ${v23Btn('<i class="fa-solid fa-user-plus"></i> Nuovo utente','blue','data-new-user')} ${v23Btn('<i class="fa-solid fa-coins"></i> Credito agenti','green','data-v22-credit-admin')}`)
+    + v24Kpis([{label:'Pratiche backend',value:rows.length,icon:'fa-file-lines'},{label:'Agenti attivi',value:v24Users('agent').length,icon:'fa-users'},{label:'Clienti salvati',value:v24ClientPool().length,icon:'fa-address-book'},{label:'Team Bangla in coda',value:s.bangla,icon:'fa-flag'},{label:'Team Italy in coda',value:s.italy,icon:'fa-paper-plane'},{label:'Incassi registrati',value:v24Euro(v24Revenue()),icon:'fa-coins'}])
+    + `<div class="v23-grid-main"><div>${v24MembershipPanel()}${v24Table('Pratiche recenti','Solo dati reali dal backend/Supabase',v24Recent(rows,9),{role:'admin'})}</div><aside>${v24QuickActions('admin')}<section class="v23-card"><div class="v23-card-head"><div><h3>Richieste credito</h3><p>Agenti da verificare</p></div></div>${credits.slice(0,5).map(c=>`<div class="v24-credit"><b>${safe(c.agentName||c.agentEmail||c.email||'Agente')}</b><span>${safe(c.phone||'Telefono --')} · ${v24Euro(c.amount||0)}</span><button class="v23-link green" data-credit-approve="${safe(c.id)}">Approva</button></div>`).join('')||'<p class="v23-muted">Nessuna richiesta credito.</p>'}</section>${v24Activity()}</aside></div>`;
+}
+function v24AgentDashboard(){
+  const rows=v24RoleRows('agent'); const credit=(typeof agentCredit==='function')?agentCredit():0;
+  return v23Hero('Il tuo lavoro, più valore per le persone','Crea pratiche, salva clienti, controlla credito, membership, costi e profitto in tempo reale.', `${v23Btn('<i class="fa-solid fa-plus"></i> Nuova pratica','orange','data-v22-new-practice')} ${v23Btn('<i class="fa-solid fa-crown"></i> Nuova membership','blue','data-v22-membership')}`)
+    + v24Kpis([{label:'Le mie pratiche',value:rows.length,icon:'fa-file-lines'},{label:'Completate',value:v24DoneCount(rows),icon:'fa-check-circle'},{label:'Credito disponibile',value:v24Euro(credit),icon:'fa-wallet'},{label:'Profitto stimato',value:v24Euro(v24AgentProfit()),icon:'fa-sack-dollar'},{label:'Clienti salvati',value:v24ClientPool().filter(c=>!c.agentEmail||c.agentEmail===STATE.session?.email).length,icon:'fa-address-book'}])
+    + `<div class="v23-grid-main"><div>${v24MembershipPanel()}${v24Table('Le mie pratiche','Ordini, documenti, stato e profitto reale',rows,{role:'agent'})}</div><aside>${v24QuickActions('agent')}<section class="v23-card"><div class="v23-card-head"><div><h3>Calcolatore profitto</h3><p>Prezzo cliente - costo CAF CAE</p></div></div><div class="v24-calc"><label>Prezzo cliente<input id="v24CalcPaid" value="35" type="number"></label><label>Costo CAF CAE<input id="v24CalcCost" value="7" type="number"></label><b id="v24CalcResult">Profitto: € 28</b></div></section>${v24Activity('Notifiche agente')}</aside></div>`;
+}
+function v24BanglaDashboard(){
+  const rows=v24RoleRows('bangla'); const ready=rows.filter(p=>!(p.missingDocs||[]).length && !/manc|integraz/i.test(`${p.status||''} ${p.documentStatus||''}`));
+  return v23Hero('Team Bangla Control Center','Ricevi ordini dagli agenti, verifica documenti, gestisci clienti, autorizza e trasferisci a Team Italy.', `${v23Btn('<i class="fa-solid fa-plus"></i> Nuova pratica','orange','data-v22-new-practice')} ${v23Btn('<i class="fa-solid fa-user-plus"></i> Nuovo cliente','blue','data-v22-new-client')} ${v23Btn('<i class="fa-solid fa-paper-plane"></i> Invia a Italy','green')}`,'Clienti · Pratiche · Risultati')
+    + v24Kpis([{label:'Nuove da agenti',value:rows.length,icon:'fa-inbox'},{label:'Da verificare',value:rows.filter(p=>!/complet/i.test(p.status||'')).length,icon:'fa-magnifying-glass'},{label:'Documenti mancanti',value:v24DocsMissingCount(rows),icon:'fa-triangle-exclamation'},{label:'Pronte Italy',value:ready.length,icon:'fa-paper-plane'},{label:'Clienti salvati',value:v24ClientPool().length,icon:'fa-users'},{label:'Membership',value:v24MembershipRows().length,icon:'fa-crown'}])
+    + `<section class="v23-flow-big"><article><b>1</b><span>Da controllare</span><strong>${rows.length}</strong></article><i></i><article><b>2</b><span>Documenti mancanti</span><strong>${v24DocsMissingCount(rows)}</strong></article><i></i><article class="ok"><b>3</b><span>Autorizzabili</span><strong>${ready.length}</strong></article><i></i><article class="send"><b>4</b><span>Trasferite a Italy</span><strong>${v22PracticeStats().italy}</strong></article></section>`
+    + `<div class="v23-grid-main"><div>${v24Table('Inbox pratiche da agenti','Controllo documenti, clientela e autorizzazione',rows,{role:'bangla',head:'<button class="v23-light">Filtri</button>'})}${v24ClientPanel()}</div><aside>${v24QuickActions('bangla')}${v24Activity('Comunicazioni recenti')}${v24MembershipPanel()}</aside></div>`;
+}
+function v24ItalyDashboard(){
+  const rows=v24RoleRows('italy');
+  return v23Hero('Team Italy','Completa e finalizza solo le pratiche autorizzate da Team Bangla: documenti, ricevute, integrazioni e risultati.', `${v23Btn('<i class="fa-solid fa-folder-open"></i> Apri assegnate','orange')} ${v23Btn('<i class="fa-solid fa-upload"></i> Carica ricevuta','blue','data-v22-upload-receipt')} ${v23Btn('<i class="fa-solid fa-rotate-left"></i> Ritorna a Bangla','light','data-v22-return-bangla')}`,'Dalla verifica al risultato, insieme')
+    + v24Kpis([{label:'Assegnate',value:rows.length,icon:'fa-folder-open'},{label:'In revisione',value:rows.filter(p=>!/complet/i.test(p.status||'')).length,icon:'fa-clock'},{label:'Da completare',value:rows.filter(p=>v23Pct(p)<100).length,icon:'fa-clipboard-check'},{label:'Ricevute da caricare',value:rows.filter(p=>!/ricev/i.test(JSON.stringify(p).toLowerCase())).length,icon:'fa-upload'},{label:'Complete',value:v24DoneCount(rows),icon:'fa-circle-check'}])
+    + `<div class="v23-grid-main"><div>${v24Table('Pratiche assegnate a Team Italy','Autorizzate da Team Bangla e pronte per lavorazione',rows,{role:'italy'})}<section class="v23-card"><div class="v23-card-head"><div><h3>Workflow pratica</h3><p>Ricevuta → Verifica → Integrazione → Ricevuta → Completata</p></div></div><div class="v23-stepper"><span class="done">Ricevuta</span><span class="done">Verifica</span><span class="active">Lavorazione</span><span>Ricevuta</span><span>Completata</span></div></section></div><aside>${v24QuickActions('italy')}${v24MembershipPanel()}${v24Activity('Scadenze e attività')}</aside></div>`;
+}
+function v24CommercialistaDashboard(){
+  const rows=v24RoleRows('commercialista'); const companies=v24Companies(); const invoices=v24Invoices();
+  return v23Hero('Area Commercialista','Gestione clienti, ditte, documenti, F24, fatture, buste paga, piani e comunicazioni clienti.', `${v23Btn('<i class="fa-solid fa-plus"></i> Nuovo cliente / ditta','orange','data-comm-step="comm-step-client"')} ${v23Btn('<i class="fa-solid fa-upload"></i> Carica documenti','blue','data-v22-upload-company-doc')}`,'Professionisti al fianco delle imprese')
+    + v24Kpis([{label:'Ditte/Clienti',value:companies.length,icon:'fa-building'},{label:'Pratiche fiscali',value:rows.length,icon:'fa-folder'},{label:'Fatture registrate',value:invoices.length,icon:'fa-file-invoice'},{label:'Documenti',value:(STATE.commDocuments||[]).length,icon:'fa-folder-open'},{label:'Incassi registrati',value:v24Euro(invoices.reduce((s,i)=>s+Number(i.total||i.amount||0),0)),icon:'fa-coins'},{label:'Piani attivi',value:new Set(companies.map(c=>c.plan||c.package).filter(Boolean)).size,icon:'fa-crown'}])
+    + `<div class="v23-grid-main"><div><section class="v23-card v23-form-card"><div class="v23-card-head"><div><h3>Nuovo cliente / nuova ditta</h3><p>Wizard pronto per dati cliente, azienda, piano, servizi e documenti.</p></div><button class="v23-light">Salva bozza</button></div><div class="v23-wizard"><b class="active">1 Dati cliente</b><b>2 Dati azienda</b><b>3 Servizi</b><b>4 Piano</b><b>5 Conferma</b></div><div class="v23-form-grid"><input placeholder="Nome"><input placeholder="Cognome"><input placeholder="Email"><input placeholder="Telefono"><input placeholder="Codice fiscale"><select><option>Persona fisica</option><option>Ditta individuale</option><option>SRL</option></select></div><button class="v23-btn orange">Avanti</button></section>${v24Table('Pratiche fiscali recenti','Solo pratiche assegnate al commercialista',rows,{role:'commercialista'})}</div><aside>${v24QuickActions('commercialista')}<section class="v23-card"><div class="v23-card-head"><div><h3>Piani Commercialista</h3><p>Pacchetti reali da configurare</p></div></div><div class="v24-plan-list"><div><b>Base</b><span>Configura prezzo e inclusi</span></div><div><b>Professional</b><span>Servizi contabilità + documenti</span></div><div><b>Premium</b><span>Report, F24, dipendenti</span></div></div></section>${v24Activity('Scadenze imminenti')}</aside></div>`;
+}
+function v24Render(){
+  if(!STATE.session) return;
+  const home=v23RoleHome ? v23RoleHome() : null; if(!home) return;
+  document.body.classList.add('v23-pro-green','v24-live-ready');
+  const role=STATE.session.role; let html='';
+  if(role==='admin') html=v24AdminDashboard();
+  if(role==='agent') html=v24AgentDashboard();
+  if(role==='bangla') html=v24BanglaDashboard();
+  if(role==='italy') html=v24ItalyDashboard();
+  if(role==='commercialista') html=v24CommercialistaDashboard();
+  if(html) home.innerHTML = `<div class="v23-shell v24-shell">${html}</div>`;
+}
+if(typeof v23Render === 'function'){
+  v23Render = v24Render;
+  window.CAF_CAE_REVISU_DESIGN = v24Render;
+}
+document.addEventListener('input', e=>{
+  if(e.target?.id==='v24CalcPaid' || e.target?.id==='v24CalcCost'){
+    const paid=Number(document.getElementById('v24CalcPaid')?.value||0); const cost=Number(document.getElementById('v24CalcCost')?.value||0);
+    const box=document.getElementById('v24CalcResult'); if(box) box.textContent='Profitto: '+v24Euro(Math.max(0,paid-cost));
+  }
+});
+
+
   async function boot() {
     seed();
     ensureState();
