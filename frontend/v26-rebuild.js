@@ -11,16 +11,6 @@
   const uid = () => 'ui-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7);
   const state = { mounted:false, page:'dashboard', detail:null, loading:false, data:{ practices:[], clients:[], users:[], memberships:[], notifications:[], teamMembers:[], credit:{ledger:[],balance:0}, packages:[] }, session:null, search:'' };
 
-  window.addEventListener('error', function(e){
-    const msg = String(e.message || '');
-    if(msg.includes('textContent') || msg.includes('Cannot set properties of null')){
-      console.warn('CAF CAE v31 ignored old UI render error:', msg);
-      try { setTimeout(forceRender, 60); } catch {}
-      e.preventDefault();
-      return true;
-    }
-  }, true);
-
   async function api(path, opts={}){
     const headers = { ...(opts.headers||{}) };
     if (token()) headers.Authorization = 'Bearer ' + token();
@@ -59,63 +49,47 @@
         <div class="v29-login-brand"><span>C</span><div><b>CAF CAE <em>Pro</em></b><small>Servizi. Persone. Risultati.</small></div></div>
         <h1>Accesso operativo</h1>
         <p>${esc(message || 'Entra nel gestionale CAF CAE Pro con il tuo account.')}</p>
-        <form id="v31LoginForm" class="v29-login-form v31-login-form" autocomplete="off" spellcheck="false" novalidate>
-          <label>Email o username<input id="v31LoginUser" name="cafcae_user_31" type="text" inputmode="email" autocomplete="off" autocorrect="off" autocapitalize="none" placeholder="Scrivi admin oppure italy@cafcae.it" required></label>
-          <label>Password<input id="v31LoginPass" name="cafcae_pass_31" type="password" autocomplete="new-password" autocorrect="off" autocapitalize="none" placeholder="Scrivi password" required></label>
-          <button id="v31LoginBtn" type="submit">Accedi alla dashboard</button>
+        <form id="v29LoginForm" class="v29-login-form" autocomplete="on">
+          <label>Email o username<input id="v30LoginUser" name="username" autocomplete="username" placeholder="admin / italy@cafcae.it" required></label>
+          <label>Password<input id="v30LoginPass" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required></label>
+          <button id="v30LoginBtn" type="submit">Accedi alla dashboard</button>
         </form>
-        <div class="v29-login-help">UI v31 attiva · login reale · niente popup Chrome</div>
+        <div class="v29-login-help">UI v30 attiva · login reale e logout stabile</div>
       </div>
     </div>`;
-    root.querySelectorAll('input,button,textarea,select').forEach((el,i)=>{
-      el.disabled=false; el.readOnly=false;
-      el.removeAttribute('disabled'); el.removeAttribute('readonly');
-      el.style.pointerEvents='auto'; el.style.userSelect='auto'; el.style.opacity='1';
-      if(el.tagName==='INPUT'){
-        el.setAttribute('autocomplete','off');
-        el.setAttribute('data-lpignore','true');
-        el.setAttribute('data-1p-ignore','true');
-        el.setAttribute('data-form-type','other');
-        el.name = 'cafcae_v31_' + i + '_' + Date.now();
-      }
-    });
-    setTimeout(()=>{ const inp=root.querySelector('#v31LoginUser'); if(inp) { inp.focus(); inp.select?.(); } }, 120);
+    root.querySelectorAll('input,button,textarea,select').forEach(el=>{ el.disabled=false; el.readOnly=false; el.style.pointerEvents='auto'; el.style.userSelect='auto'; });
+    setTimeout(()=>{ const inp=root.querySelector('#v30LoginUser'); if(inp) inp.focus(); }, 80);
     const oldApp = document.getElementById('caeV26App');
     if(oldApp) oldApp.remove();
     state.mounted = false;
     return true;
   }
   async function handleLoginForm(form){
-    const username = String((form.querySelector('#v31LoginUser')||form.querySelector('input[type="text"],input:not([type])'))?.value || '').trim();
-    const password = String((form.querySelector('#v31LoginPass')||form.querySelector('input[type="password"'))?.value || '');
+    const fd = new FormData(form);
+    const username = String(fd.get('username')||'').trim();
+    const password = String(fd.get('password')||'');
     const btn = form.querySelector('button');
     if(btn){ btn.disabled = true; btn.textContent = 'Accesso...'; }
     try{
       if(!username || !password) throw new Error('Inserisci username/email e password.');
       let data = null;
-      let lastError = '';
-      if(window.CAF_CAE_API && typeof window.CAF_CAE_API.login === 'function'){
-        try { data = await window.CAF_CAE_API.login(username, password); }
-        catch(ex){ lastError = ex.message || String(ex); }
-      }
       const body = { username, email: username, identifier: username, password };
       const endpoints = ['/api/auth/login','/api/login','/login'];
-      if(!data){
-        for (const ep of endpoints){
-          try{
-            const res = await fetch(API()+ep, {
-              method:'POST',
-              credentials:'include',
-              headers:{ 'Content-Type':'application/json' },
-              body: JSON.stringify(body)
-            });
-            const text = await res.text();
-            let parsed = {}; try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { ok:false, raw:text }; }
-            console.log('CAF CAE v31 login try', ep, res.status, parsed);
-            if(res.ok && (parsed.token || parsed.access_token || parsed.jwt || parsed.user)){ data = parsed; break; }
-            lastError = parsed.error || parsed.message || text || ('HTTP '+res.status);
-          } catch(ex){ lastError = ex.message; }
-        }
+      let lastError = '';
+      for (const ep of endpoints){
+        try{
+          const res = await fetch(API()+ep, {
+            method:'POST',
+            credentials:'include',
+            headers:{ 'Content-Type':'application/json' },
+            body: JSON.stringify(body)
+          });
+          const text = await res.text();
+          let parsed = {}; try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { ok:false, raw:text }; }
+          console.log('CAF CAE v30 login try', ep, res.status, parsed);
+          if(res.ok && (parsed.token || parsed.access_token || parsed.jwt || parsed.user)){ data = parsed; break; }
+          lastError = parsed.error || parsed.message || text || ('HTTP '+res.status);
+        } catch(ex){ lastError = ex.message; }
       }
       if(!data) throw new Error(lastError || 'Login backend non riuscito.');
       const tok = data.token || data.access_token || data.jwt || data.session?.access_token || '';
@@ -393,10 +367,6 @@
   window.CAF_CAE_V30_RENDER = forceRender;
   window.CAF_CAE_V30_LOGIN = showLogin;
   window.CAF_CAE_V30_LOGOUT = performLogout;
-  window.CAF_CAE_V31_SYNC = refresh;
-  window.CAF_CAE_V31_RENDER = forceRender;
-  window.CAF_CAE_V31_LOGIN = showLogin;
-  window.CAF_CAE_V31_LOGOUT = performLogout;
   window.addEventListener('cafcae:v27-force-render', forceRender);
   window.addEventListener('cafcae:v28-force-render', forceRender);
   const bootTimer=setInterval(()=>{ if(!state.mounted) mount().catch(()=>{}); else if(!$('#caeV26App')) render(); }, 500);
