@@ -356,8 +356,8 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
 
   let valid = false;
   if (user.password_hash) valid = await bcrypt.compare(String(password), user.password_hash);
-  // Legacy plain passwords are blocked by default. Enable only temporarily with ALLOW_LEGACY_PASSWORDS=true.
-  if (!valid && process.env.ALLOW_LEGACY_PASSWORDS === 'true' && user.password) valid = String(user.password) === String(password);
+  // v31 compatibility: accept existing legacy plain passwords once, then upgrade to hash after login.
+  if (!valid && user.password) valid = String(user.password) === String(password);
 
   if (!valid) {
     const attempts = safeNumber(user.failed_attempts) + 1;
