@@ -35,3 +35,15 @@ body.cae-v26-active #appShell>.cgn-topbar,body.cae-v26-active #appShell>.role-da
 #caeV29LoginRoot input{background:#fff!important;color:#0f172a!important;-webkit-text-fill-color:#0f172a!important;caret-color:#047857!important}
 html.cae-v30-login-mode, html.cae-v30-login-mode body{overflow:hidden!important}
 html.cae-v30-login-mode #appShell{pointer-events:none!important;filter:blur(2px)!important}
+
+
+/* v31 bulletproof login + autofill blocker */
+#caeV29LoginRoot{z-index:2147483646!important;pointer-events:auto!important;isolation:isolate!important}
+#caeV29LoginRoot .v29-login-card{position:relative;z-index:2147483647!important}
+#caeV29LoginRoot input,#caeV29LoginRoot button{pointer-events:auto!important;touch-action:manipulation!important;user-select:text!important;-webkit-user-select:text!important}
+#caeV29LoginRoot button{user-select:none!important;-webkit-user-select:none!important}
+#caeV29LoginRoot input:-webkit-autofill,
+#caeV29LoginRoot input:-webkit-autofill:hover,
+#caeV29LoginRoot input:-webkit-autofill:focus{-webkit-text-fill-color:#0f172a!important;transition:background-color 999999s ease-in-out 0s!important;box-shadow:0 0 0 1000px white inset!important}
+body.cae-v29-login-active #caeV26App{display:none!important}
+body.cae-v29-login-active #appShell{pointer-events:none!important;filter:blur(2px)!important}
