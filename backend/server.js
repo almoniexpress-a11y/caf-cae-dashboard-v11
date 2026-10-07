@@ -1125,6 +1125,20 @@ app.get('/api/v22/commercialista/packages', requireAuth, asyncHandler(async (req
   const rows = await dbSelect('v22_commercialista_packages', { active: true }, { order: 'monthly_price', ascending: true }).catch(()=>[]);
   ok(res, { packages: rows });
 }));
+
+// v27 compatibility: current session/profile endpoint used by rebuilt frontend
+app.get('/api/me', requireAuth, asyncHandler(async (req, res) => {
+  ok(res, { user: req.user, session: req.user });
+}));
+app.get('/api/profile', requireAuth, asyncHandler(async (req, res) => {
+  ok(res, { user: req.user, profile: req.user });
+}));
+app.get('/api/v22/agent-credit-requests', requireAuth, asyncHandler(async (req, res) => {
+  let rows = await dbSelect('v22_agent_credit_requests', {}, { order: 'created_at' }).catch(()=>[]);
+  if (req.user.role !== 'admin') rows = rows.filter(r => r.agent_email === req.user.email);
+  ok(res, { requests: rows, count: rows.length });
+}));
+
 app.get('/api/v22/notifications', requireAuth, asyncHandler(async (req, res) => {
   const rows = await dbSelect('v22_notifications', {}, { order: 'created_at', limit: 100 }).catch(()=>[]);
   const filtered = rows.filter(n => !n.target_role || n.target_role === req.user.role || n.target_role === 'all' || n.target_email === req.user.email || req.user.role === 'admin');
