@@ -95,3 +95,7 @@ Added CGN-style agent portal structure based on uploaded screen recording while 
 
 ## v19 update
 CAF CAE own service catalogue, appointment/call intake and improved blue header/logo.
+
+
+## v33 Login Panel Final Fix
+See `README-v33-LOGIN-PANEL-FINAL.md`.
