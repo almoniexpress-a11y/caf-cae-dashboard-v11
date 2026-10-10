@@ -64,7 +64,7 @@
           <label>Password<input id="v31LoginPass" name="cafcae_pass_31" type="password" autocomplete="new-password" autocorrect="off" autocapitalize="none" placeholder="Scrivi password" required></label>
           <button id="v31LoginBtn" type="submit">Accedi alla dashboard</button>
         </form>
-        <div class="v29-login-help">UI v31 attiva · login reale · niente popup Chrome</div>
+        <div class="v29-login-help">UI v32 attiva · login stabile · tasto Invio funzionante</div>
       </div>
     </div>`;
     root.querySelectorAll('input,button,textarea,select').forEach((el,i)=>{
@@ -87,7 +87,7 @@
   }
   async function handleLoginForm(form){
     const username = String((form.querySelector('#v31LoginUser')||form.querySelector('input[type="text"],input:not([type])'))?.value || '').trim();
-    const password = String((form.querySelector('#v31LoginPass')||form.querySelector('input[type="password"'))?.value || '');
+    const password = String((form.querySelector('#v31LoginPass')||form.querySelector('input[type="password"]'))?.value || '');
     const btn = form.querySelector('button');
     if(btn){ btn.disabled = true; btn.textContent = 'Accesso...'; }
     try{
@@ -366,11 +366,29 @@
   function commercialistaOnboarding(){ return v27Panel('Nuovo cliente / nuova ditta','Wizard commerciale: dati cliente, ditta, pacchetto, documenti e Shopify.', `<div class="v27-wizard"><span class="active">1 Dati cliente</span><span>2 Dati azienda</span><span>3 Servizi</span><span>4 Piano</span><span>5 Conferma</span></div><form class="v26-form"><label>Nome<input placeholder="Mario"></label><label>Cognome<input placeholder="Bianchi"></label><label>Email<input></label><label>Codice fiscale<input></label><label>Tipo cliente<select><option>Persona fisica</option><option>Ditta individuale</option><option>SRL</option></select></label><label>Piano<select><option>Base</option><option>Professional</option><option>Premium</option></select></label><button class="v26-btn orange" type="button">Salva cliente / ditta</button></form>`); }
   function commercialistaPackages(){ const packs=state.data.packages||[]; return v27Panel('Piani commercialista','Cosa è incluso e cosa no.', `<div class="v27-package-list">${(packs.length?packs:[{name:'Base',monthly_price:49},{name:'Professional',monthly_price:99},{name:'Premium',monthly_price:149}]).map(p=>`<div class="v26-card"><b>${esc(p.name||p.package_name)}</b><strong>${euro(p.monthly_price||p.price||0)}/mese</strong><small>Fatture · F24 · Documenti · Report</small></div>`).join('')}</div>`); }
   function documentsQuickPanel(ps){ return v27Panel('Documenti veloci','Upload, anteprima, download e ricevute.', `<div class="v26-actions"><button class="v26-btn orange" data-page="documents">Carica documenti</button><button class="v26-btn blue" data-page="documents">Carica ricevuta</button><button class="v26-btn light" data-page="practices">Apri pratica</button></div>`); }
-  function shell(){ const sess=state.session||readSession()||{}; const role=sess.role||'admin'; const nav=navFor(role); return `<aside class="v26-sidebar"><div class="v26-brand"><span class="v26-logo-mark">C</span><div><strong>CAF CAE <span>Pro</span></strong><small>Servizi. Persone. Risultati.</small></div></div><div class="v26-user-mini"><span class="v26-avatar">${esc((sess.name||sess.email||role).slice(0,2).toUpperCase())}</span><div><b>${esc(sess.name||sess.email||'Utente')}</b><span>${esc(roleLabel(role))}</span></div></div><nav class="v26-nav"><div class="v26-nav-title">Menu operativo</div>${nav.map(([p,l,i])=>`<button data-page="${p}" class="${state.page===p?'active':''}"><i class="fa-solid ${i}"></i>${esc(l)}${p==='tickets'?'<span class="v26-badge">!</span>':''}</button>`).join('')}</nav><div class="v26-sidebar-footer"><b>CAF CAE Pro v30</b><br>Login reale + logout stabile</div></aside><main class="v26-main"><header class="v26-topbar"><button class="v26-menu-toggle" id="v26Menu"><i class="fa-solid fa-bars"></i></button><div class="v26-titlebox"><b>${esc(titleForPage())}</b><p>${esc(subtitleForRole(role))}</p></div><div class="v26-search"><i class="fa-solid fa-search"></i><input id="v26GlobalSearch" value="${esc(state.search)}" placeholder="Cerca pratiche, utenti, documenti, clienti..."></div><div class="v26-top-actions"><button class="v26-icon" data-page="notifications"><i class="fa-regular fa-bell"></i><em>${state.data.notifications?.length||0}</em></button><button class="v26-icon" data-page="tickets"><i class="fa-regular fa-message"></i></button><button class="v26-icon" data-page="settings"><i class="fa-solid fa-gear"></i></button><button class="v26-btn light v27-logout" data-logout><i class="fa-solid fa-right-from-bracket"></i> Logout</button><div class="v26-profile"><span class="v26-avatar">${esc((sess.name||role).slice(0,1).toUpperCase())}</span><div><b>${esc(sess.name||sess.email||'Utente')}</b><span>${esc(roleLabel(role))}</span></div></div></div></header><div class="v26-content" id="v26Content">${pageContent()}</div></main><input id="v26FileInput" type="file" multiple class="v26-hide">`; }
+  function shell(){ const sess=state.session||readSession()||{}; const role=sess.role||'admin'; const nav=navFor(role); return `<aside class="v26-sidebar"><div class="v26-brand"><span class="v26-logo-mark">C</span><div><strong>CAF CAE <span>Pro</span></strong><small>Servizi. Persone. Risultati.</small></div></div><div class="v26-user-mini"><span class="v26-avatar">${esc((sess.name||sess.email||role).slice(0,2).toUpperCase())}</span><div><b>${esc(sess.name||sess.email||'Utente')}</b><span>${esc(roleLabel(role))}</span></div></div><nav class="v26-nav"><div class="v26-nav-title">Menu operativo</div>${nav.map(([p,l,i])=>`<button data-page="${p}" class="${state.page===p?'active':''}"><i class="fa-solid ${i}"></i>${esc(l)}${p==='tickets'?'<span class="v26-badge">!</span>':''}</button>`).join('')}</nav><div class="v26-sidebar-footer"><b>CAF CAE Pro v32</b><br>Login funzionante + UI stabile</div></aside><main class="v26-main"><header class="v26-topbar"><button class="v26-menu-toggle" id="v26Menu"><i class="fa-solid fa-bars"></i></button><div class="v26-titlebox"><b>${esc(titleForPage())}</b><p>${esc(subtitleForRole(role))}</p></div><div class="v26-search"><i class="fa-solid fa-search"></i><input id="v26GlobalSearch" value="${esc(state.search)}" placeholder="Cerca pratiche, utenti, documenti, clienti..."></div><div class="v26-top-actions"><button class="v26-icon" data-page="notifications"><i class="fa-regular fa-bell"></i><em>${state.data.notifications?.length||0}</em></button><button class="v26-icon" data-page="tickets"><i class="fa-regular fa-message"></i></button><button class="v26-icon" data-page="settings"><i class="fa-solid fa-gear"></i></button><button class="v26-btn light v27-logout" data-logout><i class="fa-solid fa-right-from-bracket"></i> Logout</button><div class="v26-profile"><span class="v26-avatar">${esc((sess.name||role).slice(0,1).toUpperCase())}</span><div><b>${esc(sess.name||sess.email||'Utente')}</b><span>${esc(roleLabel(role))}</span></div></div></div></header><div class="v26-content" id="v26Content">${pageContent()}</div></main><input id="v26FileInput" type="file" multiple class="v26-hide">`; }
   function titleForPage(){ const p=state.page; const m={dashboard:'Dashboard',create:'Crea pratica',clients:'Clienti',agents:'Agenti',users:'Team & Permessi',practices:'Pratiche',assigned:'Pratiche assegnate','agent-inbox':'Inbox agenti',verify:'Verifica documenti',transfers:'Invio a Italy',review730:'730 Review',complete:'Da completare',documents:'Documenti',membership:'Membership Center',credit:'Credito agenti',wallet:'Wallet & credito',commissioni:'Profitto',tickets:'Ticket',daily:'Report giornaliero',detail:'Dettaglio pratica',settings:'Servizi & prezzi',reports:'Report','company-new':'Nuova ditta',invoices:'Fatturazione',f24:'F24 e contributi',employees:'Dipendenti',packages:'Piani e pacchetti',profile:'Profilo & Salary'}; return m[p]||p.replace(/-/g,' ').replace(/^./,c=>c.toUpperCase()); }
   document.addEventListener('click', e=>{ if(e.target.closest('[data-logout]')){ e.preventDefault(); performLogout(); } });
-  document.addEventListener('submit', e=>{ if(e.target && e.target.id==='v29LoginForm'){ e.preventDefault(); e.stopPropagation(); handleLoginForm(e.target); } }, true);
-  document.addEventListener('click', e=>{ const btn=e.target.closest && e.target.closest('#v30LoginBtn'); if(btn){ const form=document.getElementById('v29LoginForm'); if(form){ e.preventDefault(); e.stopPropagation(); handleLoginForm(form); } } }, true);
+  document.addEventListener('submit', e=>{
+    const form = e.target && e.target.closest && e.target.closest('#v31LoginForm,#v30LoginForm,#v29LoginForm,.v31-login-form,.v30-login-form,.v29-login-form');
+    if(form){ e.preventDefault(); e.stopPropagation(); handleLoginForm(form); }
+  }, true);
+  document.addEventListener('click', e=>{
+    const btn = e.target.closest && e.target.closest('#v31LoginBtn,#v30LoginBtn,#v29LoginBtn,[data-cae-login]');
+    if(btn){
+      const form = btn.closest('form') || document.getElementById('v31LoginForm') || document.getElementById('v30LoginForm') || document.getElementById('v29LoginForm');
+      if(form){ e.preventDefault(); e.stopPropagation(); handleLoginForm(form); }
+    }
+  }, true);
+  document.addEventListener('keydown', e=>{
+    if(e.key === 'Enter'){
+      const root = document.getElementById('caeV29LoginRoot');
+      if(root && root.contains(document.activeElement)){
+        const form = document.getElementById('v31LoginForm') || document.getElementById('v30LoginForm') || document.getElementById('v29LoginForm');
+        if(form){ e.preventDefault(); handleLoginForm(form); }
+      }
+    }
+  }, true);
   document.addEventListener('submit', e=>{ if(e.target.id==='v27CreditForm'){ e.preventDefault(); const fd=new FormData(e.target); api('/api/v22/agent/credit-request',{method:'POST',json:{amount:Number(fd.get('amount')||0),phone:fd.get('phone'),payment_method:fd.get('payment_method'),note:fd.get('note')}}).then(()=>{toast('Richiesta credito inviata ad Admin.'); return refresh();}).catch(err=>toast(err.message)); }});
 
   async function forceRender(){
@@ -397,6 +415,10 @@
   window.CAF_CAE_V31_RENDER = forceRender;
   window.CAF_CAE_V31_LOGIN = showLogin;
   window.CAF_CAE_V31_LOGOUT = performLogout;
+  window.CAF_CAE_V32_SYNC = refresh;
+  window.CAF_CAE_V32_RENDER = forceRender;
+  window.CAF_CAE_V32_LOGIN = showLogin;
+  window.CAF_CAE_V32_LOGOUT = performLogout;
   window.addEventListener('cafcae:v27-force-render', forceRender);
   window.addEventListener('cafcae:v28-force-render', forceRender);
   const bootTimer=setInterval(()=>{ if(!state.mounted) mount().catch(()=>{}); else if(!$('#caeV26App')) render(); }, 500);
