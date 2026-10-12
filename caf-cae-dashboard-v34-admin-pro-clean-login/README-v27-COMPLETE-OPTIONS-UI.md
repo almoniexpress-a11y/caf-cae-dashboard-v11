@@ -1,0 +1,1 @@
+CAF CAE v27 Complete Options UI: generated-image style dashboards with working side navigation, logout, full role pages, upload/detail/actions, agent credit/profit, Team Bangla/Italy workflow and backend compatibility routes.
