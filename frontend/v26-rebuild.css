@@ -43,3 +43,28 @@ body.cae-v35-active #appShell>*:not(#caeV35App){display:none!important}
 .v36-login-screen .alert.error{margin:0 0 18px;border-radius:14px;padding:12px 14px}
 @media(max-width:960px){.v36-login-shell{grid-template-columns:1fr;width:min(540px,96vw);min-height:auto}.v36-login-brand{display:none}.v36-login-card{padding:38px 30px}.v36-mobile-brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}.v36-mobile-brand img{width:126px;height:62px;object-fit:contain}.v36-mobile-brand span{padding:7px 10px;border-radius:999px;background:#eaf7f0;color:#12633f;font-size:11px;font-weight:950}.v36-login-heading h2{font-size:34px}}
 @media(max-width:520px){.v36-login-screen{padding:14px!important}.v36-login-shell{border-radius:24px}.v36-login-card{padding:28px 20px}.v36-field,.v36-login-submit{height:54px}.v36-login-meta{flex-direction:column;gap:8px}.v36-login-heading h2{font-size:31px}}
+
+/* CAF CAE PRO v38 — clean platform layer */
+.cae-v35-active .v35-side{width:250px;background:#063f34;border-right:0;box-shadow:none}
+.cae-v35-active .v35-nav{gap:4px;padding:4px 12px}
+.cae-v35-active .v35-nav button{min-height:44px;border-radius:10px;font-weight:700}
+.cae-v35-active .v35-nav button.active{background:#fff;color:#064e3b;box-shadow:none}
+.cae-v35-active .v35-main{margin-left:250px;background:#f6f8f7}
+.cae-v35-active .v35-top{border-bottom:1px solid #e7ece9;box-shadow:none}
+.cae-v35-active .v35-content{max-width:1600px;margin:0 auto;padding:24px}
+.cae-v35-active .v35-hero{border-radius:18px;background:linear-gradient(115deg,#064e3b,#08785e);box-shadow:none}
+.cae-v35-active .v35-card{border:1px solid #e5ebe8;box-shadow:none;border-radius:16px}
+.v38-eyebrow{display:block;font-size:11px;letter-spacing:.13em;font-weight:900;color:#0b7a5d;margin-bottom:5px}
+.v38-queuebar{display:flex;gap:8px;flex-wrap:wrap;padding:0 0 14px}
+.v38-queuebar button{border:1px solid #dfe8e4;background:#fff;border-radius:999px;padding:8px 12px;font-weight:800;color:#42524d;cursor:pointer}
+.v38-queuebar button b{margin-left:6px;background:#eef5f2;border-radius:999px;padding:2px 7px}
+.v38-queuebar button.active{background:#064e3b;color:#fff;border-color:#064e3b}
+.v38-queuebar button.active b{background:rgba(255,255,255,.16)}
+.v38-listsearch{display:flex;align-items:center;gap:10px;border:1px solid #dfe8e4;background:#fff;border-radius:12px;padding:0 14px;margin-bottom:14px}
+.v38-listsearch input{width:100%;height:44px;border:0;outline:0;background:transparent;font:inherit}
+.v38-owner{display:inline-flex;border-radius:999px;padding:5px 9px;background:#eef5f2;color:#075e49;font-size:12px;font-weight:800}
+.v38-sub{display:block;margin-top:4px;color:#8a9692;font-size:11px}
+.cae-v35-active .v35-table td{vertical-align:middle}
+.cae-v35-active .v35-actions{gap:6px;flex-wrap:wrap}
+.cae-v35-active .v35-btn{box-shadow:none}
+@media(max-width:900px){.cae-v35-active .v35-side{width:280px}.cae-v35-active .v35-main{margin-left:0}.cae-v35-active .v35-content{padding:14px}.v38-queuebar{overflow:auto;flex-wrap:nowrap}.v38-queuebar button{white-space:nowrap}}

@@ -326,17 +326,24 @@
   }
 
   async function restoreSession() {
-    if (!window.CAF_CAE_API?.enabled?.()) return;
+    // v38: preserve a valid local session across refresh. A temporary network/API
+    // failure must never throw the operator back to the login panel.
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem('caf_cae_v12_session') || 'null'); } catch (_) {}
+    const hasToken = Boolean(localStorage.getItem('caf_cae_v12_token') || localStorage.getItem('caf_cae_token'));
+    if (cached && hasToken) STATE.session = { ...cached, active: true };
+    if (!window.CAF_CAE_API?.enabled?.() || !hasToken) return;
     try {
       const data = await window.CAF_CAE_API.me();
       if (data?.ok && data.user) {
         STATE.session = { ...data.user, active: true };
+        localStorage.setItem('caf_cae_v12_session', JSON.stringify({ id:data.user.id, email:data.user.email, role:data.user.role, name:data.user.name, office:data.user.office }));
         await loadUsersFromBackend();
       }
-    } catch (_) {
-      localStorage.removeItem('caf_cae_v12_session');
-      localStorage.removeItem('caf_cae_v11_session');
-      localStorage.removeItem('caf_cae_v8_session');
+    } catch (err) {
+      // Keep cached session on refresh/network failure. Protected API calls still
+      // enforce server permissions, so UI persistence does not weaken backend auth.
+      console.warn('v38 session validation deferred', err?.message || err);
     }
   }
 
