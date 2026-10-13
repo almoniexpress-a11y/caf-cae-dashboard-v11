@@ -2468,7 +2468,10 @@ async function v21LoadPracticesFromBackend({ render=true, silent=true } = {}){
     const nData = await v21Fetch(`/api/practices/notifications/${encodeURIComponent(STATE.session.role || 'admin')}`).catch(()=>null);
     if(nData?.notifications){ STATE.practiceNotifications = nData.notifications.map(n=>({ id:n.id, targetRole:n.target_role, praticaId:n.pratica_id, praticaCode:n.pratica_code, title:n.title, message:n.message, read:!!n.is_read, date:(n.created_at||today()).slice(0,10), time:n.created_at ? new Date(n.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}) : '', by:n.actor_name||'System' })); }
     v21PersistLocalOnly();
-    if(render) renderAll();
+    if(render){
+      try{ renderAll(); }
+      catch(renderErr){ console.warn('Legacy render skipped while Pro UI is active', renderErr); }
+    }
     if(!silent) showToast(`Pratiche caricate dal backend: ${rows.length}`);
     return true;
   }catch(err){

@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CAF CAE Pro v34</title>
+  <title>CAF CAE Pro v36</title>
   <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="v26-rebuild.css" />
+  <link rel="stylesheet" href="v26-rebuild.css?v=37" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -14,45 +14,78 @@
   <script defer src="api-client.js"></script>
   <script defer src="products.js"></script>
   <script defer src="app.js"></script>
-  <script defer src="v26-rebuild.js"></script>
+  <script defer src="v26-rebuild.js?v=37"></script>
 </head>
 <body>
   <div id="toast" class="toast hidden"></div>
 
-  <div id="loginOverlay" class="login-screen login-screen-pro">
-    <div class="login-panel login-panel-pro">
-      <aside class="login-brand-pane">
-        <div class="login-brand-card">
-          <img src="assets/caf-cae-logo.png" alt="CAF CAE logo" />
+  <div id="loginOverlay" class="login-screen login-screen-pro v36-login-screen">
+    <div class="v36-login-shell">
+      <section class="v36-login-brand">
+        <div class="v36-brand-top">
+          <div class="v36-logo-card"><img src="assets/caf-cae-logo.png" alt="CAF CAE" /></div>
+          <span class="v36-version">PRO v36</span>
         </div>
-        <span class="login-secure-pill"><i class="fa-solid fa-shield-halved"></i> Portale sicuro CAF CAE</span>
-        <h2>CAF CAE Admin & Team</h2>
-        <p>Gestione operativa professionale per Admin, Agent, Team Bangla, Team Italy e Studio Commercialista.</p>
-        <div class="login-feature-list">
-          <div><i class="fa-solid fa-user-lock"></i><span>Password protette dal backend</span></div>
-          <div><i class="fa-solid fa-users-gear"></i><span>Admin crea nuovi dipendenti e agenti</span></div>
-          <div><i class="fa-solid fa-cloud-arrow-up"></i><span>Sincronizzazione live con Railway + Supabase</span></div>
+
+        <div class="v36-brand-copy">
+          <span class="v36-eyebrow"><i class="fa-solid fa-shield-halved"></i> Portale operativo sicuro</span>
+          <h1>Un unico spazio.<br><span>Tutto CAF CAE.</span></h1>
+          <p>Pratiche, clienti, team, documenti, membership e contabilità in un sistema connesso e aggiornato in tempo reale.</p>
         </div>
-      </aside>
-      <main class="login-form-pane">
-        <div class="login-mobile-logo"><img src="assets/caf-cae-logo.png" alt="CAF CAE" /></div>
-        <div class="login-title-block">
-          <span class="login-chip">Area riservata</span>
-          <h1>Accedi al portale</h1>
-          <p>Usa username/email e password creata dall’amministratore.</p>
+
+        <div class="v36-role-grid">
+          <div><i class="fa-solid fa-user-shield"></i><span>Admin</span></div>
+          <div><i class="fa-solid fa-user-tie"></i><span>Agent</span></div>
+          <div><i class="fa-solid fa-users"></i><span>Team Bangla</span></div>
+          <div><i class="fa-solid fa-flag"></i><span>Team Italy</span></div>
+          <div><i class="fa-solid fa-building-columns"></i><span>Commercialista</span></div>
         </div>
+
+        <div class="v36-brand-footer">
+          <span><i class="fa-solid fa-circle-check"></i> Backend live</span>
+          <span><i class="fa-solid fa-lock"></i> Accesso protetto</span>
+          <span><i class="fa-solid fa-cloud"></i> Dati sincronizzati</span>
+        </div>
+      </section>
+
+      <main class="v36-login-card">
+        <div class="v36-mobile-brand"><img src="assets/caf-cae-logo.png" alt="CAF CAE" /><span>PRO v36</span></div>
+        <div class="v36-login-heading">
+          <span class="v36-login-chip">Area riservata CAF CAE</span>
+          <h2>Bentornato</h2>
+          <p>Accedi con le credenziali assegnate al tuo profilo operativo.</p>
+        </div>
+
         <div id="loginError" class="alert error hidden"></div>
-        <form id="loginForm" class="login-form">
-          <label>Username / Email</label>
-          <input id="loginUser" type="text" placeholder="es. nomeutente o email" autocomplete="username" required />
-          <label>Password</label>
-          <input id="loginPass" type="password" placeholder="Inserisci password" autocomplete="current-password" required />
-          <button class="btn orange full" type="submit">Entra nel portale <i class="fa-solid fa-right-to-bracket"></i></button>
+
+        <form id="loginForm" class="login-form v36-login-form">
+          <label for="loginUser">Username o email</label>
+          <div class="v36-field">
+            <i class="fa-regular fa-user"></i>
+            <input id="loginUser" type="text" placeholder="Inserisci username o email" autocomplete="username" spellcheck="false" required />
+          </div>
+
+          <div class="v36-label-row">
+            <label for="loginPass">Password</label>
+            <button id="forgotPasswordBtn" class="v36-forgot" type="button">Password dimenticata?</button>
+          </div>
+          <div class="v36-field">
+            <i class="fa-solid fa-lock"></i>
+            <input id="loginPass" type="password" placeholder="Inserisci la password" autocomplete="current-password" required />
+          </div>
+
+          <button class="v36-login-submit" type="submit">
+            <span>Accedi alla dashboard</span>
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
         </form>
-        <div class="login-help-row">
-          <button id="forgotPasswordBtn" class="link-btn" type="button">Password dimenticata?</button>
-          <small>Nessun accesso demo pubblico</small>
+
+        <div class="v36-login-meta">
+          <div><i class="fa-solid fa-shield-check"></i><span>Sessione protetta</span></div>
+          <div><span class="v36-live-dot"></span><span>Sistema online</span></div>
         </div>
+
+        <p class="v36-login-note">Accesso consentito esclusivamente agli utenti autorizzati CAF CAE.</p>
       </main>
     </div>
   </div>
